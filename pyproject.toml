@@ -3,7 +3,7 @@ requires = ["flit"]
 build-backend = "flit.buildapi"
 
 [tool.flit.metadata]
-module = "cloudsync-onedrive"
+module = "cloudsync_onedrive"
 author = "Atakama, LLC"
 author-email = "dev-support@atakama.com"
 home-page = "https://github.com/atakamallc/cloudsync-onedrive"
