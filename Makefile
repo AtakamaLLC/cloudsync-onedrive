@@ -16,7 +16,7 @@ lint: requirements
 	. env/$(ENVBIN)/activate && mypy .
 
 test: requirements
-	. env/$(ENVBIN)/activate && pytest -v --cov=. --cov-report=xml --durations=1 -n=8 --full-trace --timeout=900 --provider=onedrive,testodbiz tests
+	. env/$(ENVBIN)/activate && pytest -v --cov=. --cov-report=xml --durations=1 -n=8 --full-trace --provider=onedrive,testodbiz tests
 
 format:
 	autopep8 --in-place -r -j 8 cloudsync/
