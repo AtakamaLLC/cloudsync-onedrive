@@ -1,0 +1,26 @@
+language: python
+cache: pip
+sudo: false
+
+jobs:
+    include: 
+    - name: lint
+      stage: lint/unit
+      script:
+        - make lint
+    - name: unit
+      script:
+        - make test
+    - stage: deploy
+      python: 
+        - '3.6'
+      script: 
+        - flit publish
+      only:
+        - master
+
+after_success:
+    - codecov --env TRAVIS_OS_NAME
+      
+install:
+- pip install -r requirements.txt

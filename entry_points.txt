@@ -1,0 +1,2 @@
+[cloudsync.providers]
+onedrive=cloudsync_onedrive:OneDriveProvider
