@@ -12,8 +12,8 @@ requirements: env
 	. env/$(ENVBIN)/activate && pip install -r requirements.txt
 
 lint:
-	pylint .
-	mypy .
+	. env/$(ENVBIN)/activate && pylint *.py
+	. env/$(ENVBIN)/activate && mypy .
 
 test:
 	. env/$(ENVBIN)/activate && pytest -v --cov=. --cov-report=xml --durations=1 -n=8 --full-trace --timeout=600 --provider=onedrive,testodbiz tests
