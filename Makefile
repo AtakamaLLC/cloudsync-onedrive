@@ -16,6 +16,7 @@ lint: requirements
 	. env/$(ENVBIN)/activate && mypy .
 
 test: requirements
+	. env/$(ENVBIN)/activate && flit install
 	. env/$(ENVBIN)/activate && pytest -v --cov=. --cov-report=xml --durations=1 -n=4 --full-trace --provider=onedrive,testodbiz tests
 
 format:

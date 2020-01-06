@@ -10,3 +10,4 @@ pytest-xdist
 cloudsync
 onedrivesdk_fork
 quickxorhash
+codecov
