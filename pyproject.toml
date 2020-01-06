@@ -16,3 +16,6 @@ classifiers=["Intended Audience :: Developers",
 ]
 requires = ["cloudsync", "onedrivesdk_fork", "quickxorhash"]
 requires-python = ">=3.6"
+
+[tool.flit.entrypoints.cloudsync.providers]
+onedrive = "cloudsync_onedrive:OneDriveProvider"
