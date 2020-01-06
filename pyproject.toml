@@ -14,5 +14,5 @@ classifiers=["Intended Audience :: Developers",
     "Programming Language :: Python",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires = ["cloudsync", "onedrivedsk_fork", "quickxorhash"]
+requires = ["cloudsync", "onedrivesdk_fork", "quickxorhash"]
 requires-python = ">=3.6"
