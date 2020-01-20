@@ -35,7 +35,7 @@ from cloudsync.oauth import OAuthConfig, OAuthProviderInfo
 from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 
 class OneDriveFileDoneError(Exception):
