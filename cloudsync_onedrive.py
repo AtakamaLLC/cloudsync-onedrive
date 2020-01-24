@@ -10,6 +10,7 @@ Onedrive provider
 # https://docs.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/msa-oauth?view=odsp-graph-online
 # https://docs.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online
 import os
+import re
 import time
 import logging
 from pprint import pformat
@@ -35,7 +36,8 @@ from cloudsync.oauth import OAuthConfig, OAuthProviderInfo
 from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
 
-__version__ = "0.1.5"
+
+__version__ = "0.1.6"
 
 
 class OneDriveFileDoneError(Exception):
@@ -695,21 +697,22 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return self._info_from_rest(r, root=self.dirname(path))
 
     def _upload_large(self, drive_path, file_like, conflict):
-        size = _get_size_and_seek0(file_like)
-        r = self._direct_api("post", "%s/createUploadSession" % drive_path, json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
-        upload_url = r["uploadUrl"]
+        with self._api():
+            size = _get_size_and_seek0(file_like)
+            r = self._direct_api("post", "%s/createUploadSession" % drive_path, json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
+            upload_url = r["uploadUrl"]
 
-        data = file_like.read(self.upload_block_size)
-
-        cbfrom = 0
-        while data:
-            clen = len(data)             # fragment content size
-            cbto = cbfrom + clen - 1     # inclusive content byte range
-            cbrange = "bytes %s-%s/%s" % (cbfrom, cbto, size)
-            r = self._direct_api("put", url=upload_url, data=data, headers={"Content-Length": clen, "Content-Range": cbrange})
             data = file_like.read(self.upload_block_size)
-            cbfrom = cbto + 1
-        return r
+
+            cbfrom = 0
+            while data:
+                clen = len(data)             # fragment content size
+                cbto = cbfrom + clen - 1     # inclusive content byte range
+                cbrange = "bytes %s-%s/%s" % (cbfrom, cbto, size)
+                r = self._direct_api("put", url=upload_url, data=data, headers={"Content-Length": clen, "Content-Range": cbrange})
+                data = file_like.read(self.upload_block_size)
+                cbfrom = cbto + 1
+            return r
 
     def list_ns(self):
         return list(n for n in self.__name_to_drive)
@@ -970,13 +973,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _join_parent_reference_path_and_name(self, pr_path, name):
         assert pr_path
         path = self.join(pr_path, name)
-        preambles = ["/drive/root:", "/me/drive/root:", "/drives/%s/root:" % self.connection_id]
+        preambles = [r"/drive/root:", r"/me/drive/root:", r"/drives/.*?/root:"]
 
         if ':' in path:
             found = False
             for preamble in preambles:
-                if path.startswith(preamble):
-                    path = path[len(preamble):]
+                m = re.match(preamble, path)
+                if m:
+                    pre = m[0]
+                    path = path[len(pre):]
                     found = True
                     break
             if not found:
