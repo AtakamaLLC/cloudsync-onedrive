@@ -11,7 +11,6 @@ Onedrive provider
 # https://docs.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online
 import os
 import re
-import time
 import logging
 from pprint import pformat
 import threading
@@ -37,7 +36,7 @@ from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
 
 
-__version__ = "0.1.6"
+__version__ = "0.1.7"
 
 
 class OneDriveFileDoneError(Exception):
@@ -373,7 +372,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 raise CloudFileExistsError(msg)
             if status == 400:
                 raise CloudFileNotFoundError(msg)
-        if code == "UnknownError" or code == "generalException":
+        if code in ("UnknownError", "generalException"):
             raise CloudTemporaryError(msg)
 
         log.error("Not converting err %s %s", ex, req)
@@ -621,22 +620,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             log.error("no hash for file? %s", pformat(change))
             ohash = None
         return ohash
-
-    def _walk(self, path, oid):
-        for ent in self.listdir(oid):
-            current_path = self.join(path, ent.name)
-            event = Event(otype=ent.otype, oid=ent.oid, path=current_path, hash=ent.hash, exists=True, mtime=time.time())
-            log.debug("walk %s", event)
-            yield event
-            if ent.otype == DIRECTORY:
-                if self.exists_oid(ent.oid):
-                    yield from self._walk(current_path, ent.oid)
-
-    def walk(self, path, since=None):
-        info = self.info_path(path)
-        if not info:
-            raise CloudFileNotFoundError(path)
-        yield from self._walk(path, info.oid)
 
     def upload(self, oid, file_like, metadata=None) -> 'OInfo':
         size = _get_size_and_seek0(file_like)
