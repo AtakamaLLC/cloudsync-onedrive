@@ -497,7 +497,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if not self._raise_converted_error(ex=e):
                     raise
             except IOError as e:
-                raise CloudTemporaryError("io error %s", repr(e))
+                raise CloudTemporaryError("io error %s" % repr(e))
             except Exception:
                 return False  # False allows the exit handler to act as normal, which does not swallow the exception
         return None
