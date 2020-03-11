@@ -458,7 +458,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 except Exception as e:
                     log.debug("can't parse token, maybe not a team : %s", e)
 
-                new_refresh = auth_provider._session.refresh_token
+                new_refresh = auth_provider._session.refresh_token      # pylint: disable=protected-access
                 if new_refresh and new_refresh != refresh_token:
                     log.debug("creds have changed")
                     creds = {"refresh_token": new_refresh}
