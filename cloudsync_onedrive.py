@@ -458,6 +458,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 except Exception as e:
                     log.debug("can't parse token, maybe not a team : %s", e)
 
+                new_refresh = auth_provider._session.refresh_token
+                if new_refresh and new_refresh != refresh_token:
+                    log.debug("creds have changed")
+                    creds = {"refresh_token": new_refresh}
+                    self._oauth_config.creds_changed(creds)
+
                 self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, http_provider)
                 self.__client.item = self.__client.item  # satisfies a lint confusion
                 self._creds = creds

@@ -1,3 +1,5 @@
+# pylint: disable=protected-access, missing-docstring, line-too-long # noqa: D100
+
 import io
 import logging
 import re
@@ -13,19 +15,20 @@ from cloudsync_onedrive import OneDriveProvider
 
 log = logging.getLogger(__name__)
 
+NEW_TOKEN = "weird-token-od"
 
 class FakeGraphApi(FakeApi):
     @api_route("/upload")
     def upload(self, ctx, req):
         self.called("upload", (ctx, req))
-        return {"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#drives('bdd46067213df13')/items/$entity","@microsoft.graph.downloadUrl":"https://mckvog.bn.files.1drv.com/y4pxeIYeQKLFVu82R-paaa0e99SXlcC2zAz7ipLsi9EKUPVVsjUe-YBY2tXL6Uwr1KX4HP0tvg3kKejnhtmn79J8i6TW0-wYpdNvNCAKxAVi6UiBtIOUVtd75ZelLNsT_MpNzn65PdB5l926mUuPHq4Jqv3_FKdZCr0LmHm_QbbdEFenK3WgvDwFKIZDWCXEAdYxdJPqd2_wk0LVU9ClY4XBIcw84WPA1KdJbABz93ujiA","createdDateTime":"2019-12-04T15:24:18.523Z","cTag":"aYzpCREQ0NjA2NzIxM0RGMTMhMTAxMi4yNTc","eTag":"aQkRENDYwNjcyMTNERjEzITEwMTIuMQ","id":"BDD46067213DF13!1012","lastModifiedDateTime":"2019-12-04T15:24:19.717Z","name":"d943ae092dbf377dd443a9579eb10898.dest","size":32,"webUrl":"https://1drv.ms/u/s!ABPfE3IGRt0Lh3Q","createdBy":{"application":{"displayName":"Atakama","id":"4423e6ce"},"user":{"displayName":"Atakama --","id":"bdd46067213df13"}},"lastModifiedBy":{"application":{"displayName":"Atakama","id":"4423e6ce"},"user":{"displayName":"Atakama --","id":"bdd46067213df13"}},"parentReference":{"driveId":"bdd46067213df13","driveType":"personal","id":"BDD46067213DF13!1011","name":"3676c7b907d09b2d9681084a47bcae59","path":"/drive/root:/3676c7b907d09b2d9681084a47bcae59"},"file":{"mimeType":"application/octet-stream","hashes":{"quickXorHash":"MO4Q2k+0wIrVLvPvyFNEXjENmJU=","sha1Hash":"9B628BE5312D2F5E7B6ADB1D0114BC49595269BE"}},"fileSystemInfo":{"createdDateTime":"2019-12-04T15:24:18.523Z","lastModifiedDateTime":"2019-12-04T15:24:19.716Z"}}
+        return {"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#drives('bdd46067213df13')/items/$entity","@microsoft.graph.downloadUrl":"https://mckvog.bn.files.1drv.com/y4pxeIYeQKLFVu82R-paaa0e99SXlcC2zAz7ipLsi9EKUPVVsjUe-YBY2tXL6Uwr1KX4HP0tvg3kKejnhtmn79J8i6TW0-wYpdNvNCAKxAVi6UiBtIOUVtd75ZelLNsT_MpNzn65PdB5l926mUuPHq4Jqv3_FKdZCr0LmHm_QbbdEFenK3WgvDwFKIZDWCXEAdYxdJPqd2_wk0LVU9ClY4XBIcw84WPA1KdJbABz93ujiA","createdDateTime":"2019-12-04T15:24:18.523Z","cTag":"aYzpCREQ0NjA2NzIxM0RGMTMhMTAxMi4yNTc","eTag":"aQkRENDYwNjcyMTNERjEzITEwMTIuMQ","id":"BDD46067213DF13!1012","lastModifiedDateTime":"2019-12-04T15:24:19.717Z","name":"d943ae092dbf377dd443a9579eb10898.dest","size":32,"webUrl":"https://1drv.ms/u/s!ABPfE3IGRt0Lh3Q","createdBy":{"application":{"displayName":"Atakama","id":"4423e6ce"},"user":{"displayName":"Atakama --","id":"bdd46067213df13"}},"lastModifiedBy":{"application":{"displayName":"Atakama","id":"4423e6ce"},"user":{"displayName":"Atakama --","id":"bdd46067213df13"}},"parentReference":{"driveId":"bdd46067213df13","driveType":"personal","id":"BDD46067213DF13!1011","name":"3676c7b907d09b2d9681084a47bcae59","path":"/drive/root:/3676c7b907d09b2d9681084a47bcae59"},"file":{"mimeType":"application/octet-stream","hashes":{"quickXorHash":"MO4Q2k+0wIrVLvPvyFNEXjENmJU=","sha1Hash":"9B628BE5312D2F5E7B6ADB1D0114BC49595269BE"}},"fileSystemInfo":{"createdDateTime":"2019-12-04T15:24:18.523Z","lastModifiedDateTime":"2019-12-04T15:24:19.716Z"}}    # noqa
 
     @api_route("/token")
     def token(self, ctx, req):
         self.called("token", (ctx, req))
         return {
                 "token_type": "bearer",
-                "refresh_token": "r1",
+                "refresh_token": NEW_TOKEN,
                 "access_token": "a1",
                 "expires_in": 340,
                 "scope": "yes",
@@ -59,7 +62,7 @@ class FakeGraphApi(FakeApi):
 
         if meth == "PUT":
             self.called("upload.put", (uri,))
-            return {"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#drives('bdd46067213df13')/items/$entity", "@microsoft.graph.downloadUrl":"https://mckvog.bn.files.1drv.com/y4pxeIYeQKLFVu82R-paaa0e99SXlcC2zAz7ipLsi9EKUPVVsjUe-YBY2tXL6Uwr1KX4HP0tvg3kKejnhtmn79J8i6TW0-wYpdNvNCAKxAVi6UiBtIOUVtd75ZelLNsT_MpNzn65PdB5l926mUuPHq4Jqv3_FKdZCr0LmHm_QbbdEFenK3WgvDwFKIZDWCXEAdYxdJPqd2_wk0LVU9ClY4XBIcw84WPA1KdJbABz93ujiA", "createdDateTime":"2019-12-04T15:24:18.523Z", "cTag":"aYzpCREQ0NjA2NzIxM0RGMTMhMTAxMi4yNTc", "eTag":"aQkRENDYwNjcyMTNERjEzITEwMTIuMQ", "id":"BDD46067213DF13!1012", "lastModifiedDateTime":"2019-12-04T15:24:19.717Z", "name":"d943ae092dbf377dd443a9579eb10898.dest", "size":32, "webUrl":"https://1drv.ms/u/s!ABPfE3IGRt0Lh3Q", "createdBy":{"application":{"displayName":"Atakama", "id":"4423e6ce"}, "user":{"displayName":"Atakama --", "id":"bdd46067213df13"}}, "lastModifiedBy":{"application":{"displayName":"Atakama", "id":"4423e6ce"}, "user":{"displayName":"Atakama --", "id":"bdd46067213df13"}}, "parentReference":{"driveId":"bdd46067213df13", "driveType":"personal", "id":"BDD46067213DF13!1011", "name":"3676c7b907d09b2d9681084a47bcae59", "path":"/drive/root:/3676c7b907d09b2d9681084a47bcae59"}, "file":{"mimeType":"application/octet-stream", "hashes":{"quickXorHash":"MO4Q2k+0wIrVLvPvyFNEXjENmJU=", "sha1Hash":"9B628BE5312D2F5E7B6ADB1D0114BC49595269BE"}}, "fileSystemInfo":{"createdDateTime":"2019-12-04T15:24:18.523Z", "lastModifiedDateTime":"2019-12-04T15:24:19.716Z"}}
+            return {"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#drives('bdd46067213df13')/items/$entity", "@microsoft.graph.downloadUrl":"https://mckvog.bn.files.1drv.com/y4pxeIYeQKLFVu82R-paaa0e99SXlcC2zAz7ipLsi9EKUPVVsjUe-YBY2tXL6Uwr1KX4HP0tvg3kKejnhtmn79J8i6TW0-wYpdNvNCAKxAVi6UiBtIOUVtd75ZelLNsT_MpNzn65PdB5l926mUuPHq4Jqv3_FKdZCr0LmHm_QbbdEFenK3WgvDwFKIZDWCXEAdYxdJPqd2_wk0LVU9ClY4XBIcw84WPA1KdJbABz93ujiA", "createdDateTime":"2019-12-04T15:24:18.523Z", "cTag":"aYzpCREQ0NjA2NzIxM0RGMTMhMTAxMi4yNTc", "eTag":"aQkRENDYwNjcyMTNERjEzITEwMTIuMQ", "id":"BDD46067213DF13!1012", "lastModifiedDateTime":"2019-12-04T15:24:19.717Z", "name":"d943ae092dbf377dd443a9579eb10898.dest", "size":32, "webUrl":"https://1drv.ms/u/s!ABPfE3IGRt0Lh3Q", "createdBy":{"application":{"displayName":"Atakama", "id":"4423e6ce"}, "user":{"displayName":"Atakama --", "id":"bdd46067213df13"}}, "lastModifiedBy":{"application":{"displayName":"Atakama", "id":"4423e6ce"}, "user":{"displayName":"Atakama --", "id":"bdd46067213df13"}}, "parentReference":{"driveId":"bdd46067213df13", "driveType":"personal", "id":"BDD46067213DF13!1011", "name":"3676c7b907d09b2d9681084a47bcae59", "path":"/drive/root:/3676c7b907d09b2d9681084a47bcae59"}, "file":{"mimeType":"application/octet-stream", "hashes":{"quickXorHash":"MO4Q2k+0wIrVLvPvyFNEXjENmJU=", "sha1Hash":"9B628BE5312D2F5E7B6ADB1D0114BC49595269BE"}}, "fileSystemInfo":{"createdDateTime":"2019-12-04T15:24:18.523Z", "lastModifiedDateTime":"2019-12-04T15:24:19.716Z"}} # noqa
 
         if meth == "POST" and "/children" in uri:
             self.called("mkdir", (uri,))
@@ -78,6 +81,8 @@ def fake_odp():
         prov = fake_oauth_provider(srv, OneDriveProvider)
         assert srv.calls["token"]
         assert srv.calls["quota"]
+        # onedrive saves refresh token if creds change
+        assert prov._creds["refresh_token"] == NEW_TOKEN
         return srv, prov
 
 
@@ -107,31 +112,31 @@ def test_root_event():
 
 
 def test_namespace_get():
-    srv, odp = fake_odp()
+    _, odp = fake_odp()
     ns = odp.namespace
     nsid = odp.namespace_id
     assert ns
     assert nsid
 
 def test_namespace_set():
-    srv, odp = fake_odp()
+    _, odp = fake_odp()
     odp.namespace = "personal"
     nsid = odp.namespace_id
     assert nsid
 
 def test_namespace_set_err():
-    srv, odp = fake_odp()
+    _, odp = fake_odp()
     with pytest.raises(CloudNamespaceError):
         odp.namespace = "bad-namespace"
 
 def test_namespace_set_disconn():
-    srv, odp = fake_odp()
+    _, odp = fake_odp()
     odp.disconnect()
     with pytest.raises(CloudDisconnectedError):
         odp.namespace = "whatever"
 
 def test_namespace_set_other():
-    srv, odp = fake_odp()
+    _, odp = fake_odp()
 
     def raise_error():
         raise CloudTokenError("yo")
@@ -139,4 +144,3 @@ def test_namespace_set_other():
     with patch.object(odp, '_direct_api', side_effect=raise_error):
         with pytest.raises(CloudTokenError):
             odp.namespace = "whatever"
-
