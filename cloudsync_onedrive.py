@@ -680,7 +680,17 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 base = base.replace("'", "''")
                 name = urllib.parse.quote(base)
                 api_path += "/children('" + name + "')/content"
-                r = self._direct_api("put", api_path, data=file_like, headers={'content-type': 'text/plain'})
+                try:
+                    r = self._direct_api("put", api_path, data=file_like, headers={'content-type': 'text/plain'})
+                except CloudTemporaryError:
+                    info = self.info_path(path)
+                    # onedrive can fail with ConnectionResetByPeer, but still secretly succeed... just without returning info
+                    # if so, check hashes, and if all is OK, return OK
+                    if info.hash == self.hash_data(file_like):
+                        return info
+                    # alternately this could be a race condition, where two people upload at once
+                    # so fail otherwise
+                    raise
             return self._info_from_rest(r, root=dirname)
         else:
             with self._api() as client:
