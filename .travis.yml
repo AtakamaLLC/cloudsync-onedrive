@@ -12,12 +12,11 @@ jobs:
       script:
         - make test
     - stage: deploy
+      if: branch = master AND type = push
       python: 
         - '3.6'
       script: 
         - flit publish
-      only:
-        - master
 
 after_success:
     - codecov --env TRAVIS_OS_NAME
