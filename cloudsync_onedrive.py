@@ -686,7 +686,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     info = self.info_path(path)
                     # onedrive can fail with ConnectionResetByPeer, but still secretly succeed... just without returning info
                     # if so, check hashes, and if all is OK, return OK
-                    if info.hash == self.hash_data(file_like):
+                    if info and info.hash == self.hash_data(file_like):
                         return info
                     # alternately this could be a race condition, where two people upload at once
                     # so fail otherwise
