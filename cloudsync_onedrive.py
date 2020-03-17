@@ -36,7 +36,7 @@ from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
 
 
-__version__ = "0.1.9"
+__version__ = "0.1.10"
 
 
 class OneDriveFileDoneError(Exception):
@@ -339,6 +339,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         if status == 400 and not self._check_ns(self.namespace_id, self.connection_id):
             raise CloudNamespaceError(msg)
+
+        if status == -1 and "invalidclientquery" in str(code):
+            raise CloudFileNotFoundError(msg)
 
         if status < 300:
             log.error("Not converting err %s: %s %s", status, ex, req)
@@ -1023,6 +1026,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     if e.code == 400:
                         log.debug("malformed oid %s: %s", oid, e)
                         # malformed oid == not found
+                        return None
+                    if "invalidclientquery" in str(e.code).lower():
                         return None
                     raise
             return self._info_item(item, path=path)
