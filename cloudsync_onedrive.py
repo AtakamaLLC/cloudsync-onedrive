@@ -320,7 +320,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         res = self._direct_api("get", "/drives/%s/items/%s" % (nsid, "root"), raw_response=True)
         return res.status_code < 300
 
-    def _raise_converted_error(self, *, ex=None, req=None):      # pylint: disable=too-many-branches
+    def _raise_converted_error(self, *, ex=None, req=None):      # pylint: disable=too-many-branches, too-many-statements
         status = 0
         if ex is not None:
             status = ex.status_code
