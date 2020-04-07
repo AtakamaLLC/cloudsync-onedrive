@@ -87,6 +87,11 @@ class OneDriveItem():
             path = None
             oid = "root"
 
+        if path and ":" in path:
+            new_path = path.split(":")[1]
+            log.debug("Passed path containing namespace: %s, using path %s instead", path, new_path)
+            path = new_path
+
         self.__oid = oid
         self.__path = path
         self.__pid = pid
