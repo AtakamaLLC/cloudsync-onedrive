@@ -343,6 +343,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if status == -1 and "invalidclientquery" in str(code):
             raise CloudFileNotFoundError(msg)
 
+        if status == 400 and code == -1 and "invalidclientquery" in str(code):
+            # graph api can throw this if a child path isn't present as of 2020-03-15
+            raise CloudFileNotFoundError(msg)
+
         if status < 300:
             log.error("Not converting err %s: %s %s", status, ex, req)
             return False
