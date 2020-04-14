@@ -824,13 +824,14 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         pid = item["parentReference"].get("id")
         name = item["name"]
+        size = item["size"]
         mtime = item["lastModifiedDateTime"]
         shared = False
         if "createdBy" in item:
             shared = bool(item.get("remoteItem"))
 
         return OneDriveInfo(oid=iid, otype=otype, hash=ohash, path=path, pid=pid, name=name,
-                            mtime=mtime, shared=shared)
+                            size=size, mtime=mtime, shared=shared)
 
     def listdir(self, oid) -> Generator[OneDriveInfo, None, None]:
         with self._api() as client:
