@@ -226,7 +226,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return client.base_url.rstrip("/") + "/" + api_path
 
     # names of args are compat with requests module
-    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None, json=None, raw_response=False):  # pylint: disable=redefined-outer-name
+    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None, json=None, raw_response=False, timeout=600):  # pylint: disable=redefined-outer-name
         assert path or url
 
         if not url:
@@ -249,7 +249,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 stream=stream,
                 headers=head,
                 json=json,
-                data=data)
+                data=data,
+                timeout=timeout
+            )
 
         if raw_response:
             return req
