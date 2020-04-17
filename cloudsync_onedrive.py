@@ -226,7 +226,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return client.base_url.rstrip("/") + "/" + api_path
 
     # names of args are compat with requests module
-    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None, json=None, raw_response=False):  # pylint: disable=redefined-outer-name
+    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None, json=None, raw_response=False, timeout=240):  # pylint: disable=redefined-outer-name
         assert path or url
 
         if not url:
@@ -249,7 +249,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 stream=stream,
                 headers=head,
                 json=json,
-                data=data)
+                data=data,
+                timeout=timeout
+            )
 
         if raw_response:
             return req
@@ -688,7 +690,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 name = urllib.parse.quote(base)
                 api_path += "/children('" + name + "')/content"
                 try:
-                    r = self._direct_api("put", api_path, data=file_like, headers={'content-type': 'text/plain'})
+                    headers = {'content-type': 'text/plain'}
+                    r = self._direct_api("put", api_path, data=file_like, headers=headers)  # default timeout ok, size == 0 from "if" condition
                 except CloudTemporaryError:
                     info = self.info_path(path)
                     # onedrive can fail with ConnectionResetByPeer, but still secretly succeed... just without returning info
@@ -717,7 +720,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 clen = len(data)             # fragment content size
                 cbto = cbfrom + clen - 1     # inclusive content byte range
                 cbrange = "bytes %s-%s/%s" % (cbfrom, cbto, size)
-                r = self._direct_api("put", url=upload_url, data=data, headers={"Content-Length": clen, "Content-Range": cbrange})
+                headers = {"Content-Length": clen, "Content-Range": cbrange}
+                r = self._direct_api("put", url=upload_url, data=data, headers=headers)
                 data = file_like.read(self.upload_block_size)
                 cbfrom = cbto + 1
             return r
