@@ -690,7 +690,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 name = urllib.parse.quote(base)
                 api_path += "/children('" + name + "')/content"
                 try:
-                    r = self._direct_api("put", api_path, data=file_like, headers={'content-type': 'text/plain'})  # default timeout ok, size == 0 from "if" condition
+                    headers = {'content-type': 'text/plain'}
+                    r = self._direct_api("put", api_path, data=file_like, headers=headers)  # default timeout ok, size == 0 from "if" condition
                 except CloudTemporaryError:
                     info = self.info_path(path)
                     # onedrive can fail with ConnectionResetByPeer, but still secretly succeed... just without returning info
