@@ -17,7 +17,7 @@ lint: requirements
 
 test: requirements
 	. env/$(ENVBIN)/activate && flit install
-	. env/$(ENVBIN)/activate && pytest -v --cov=. --cov-report=xml --durations=1 -n=4 --provider=onedrive,testodbiz tests
+	. env/$(ENVBIN)/activate && pytest -v --cov=. --cov-report=xml --durations=1 -n=2 --provider=onedrive,testodbiz tests
 
 format:
 	autopep8 --in-place -r -j 8 cloudsync/
