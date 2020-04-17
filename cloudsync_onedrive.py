@@ -720,7 +720,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 clen = len(data)             # fragment content size
                 cbto = cbfrom + clen - 1     # inclusive content byte range
                 cbrange = "bytes %s-%s/%s" % (cbfrom, cbto, size)
-                r = self._direct_api("put", url=upload_url, data=data, headers={"Content-Length": clen, "Content-Range": cbrange}, timeout=7200)
+                headers = {"Content-Length": clen, "Content-Range": cbrange}
+                r = self._direct_api("put", url=upload_url, data=data, headers=headers)
                 data = file_like.read(self.upload_block_size)
                 cbfrom = cbto + 1
             return r
@@ -731,7 +732,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def download(self, oid, file_like):
         with self._api() as client:
             info = self._get_item(client, oid=oid)
-            r = self._direct_api("get", info.api_path + "/content", stream=True, timeout=7200)
+            r = self._direct_api("get", info.api_path + "/content", stream=True)
             for chunk in r.iter_content(chunk_size=4096):
                 file_like.write(chunk)
                 file_like.flush()
