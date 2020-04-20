@@ -49,5 +49,5 @@ def test_interrupted_file_upload(provider):
     provider.download(info.oid, new_fh)
     new_fh.seek(0, SEEK_END)
     new_len = new_fh.tell()
-    assert new_len == file_size
+    assert new_len == file_size #nosec
 
