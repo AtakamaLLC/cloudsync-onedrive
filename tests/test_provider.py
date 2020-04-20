@@ -17,39 +17,13 @@ def test_report_info_od(provider):
     assert pinfo2['limit'] > 0
 
 def test_interrupted_file_upload(provider):
-    # file_upload_size = 4 MiB, should take 12/4=3 API calls to upload file
-    file_size = 12 * 1024 * 1024
+    # Should take 3 successful API calls to upload file
+    provider.prov.upload_block_size = 320 * 1024
+    file_size = 3 * provider.prov.upload_block_size
     data = BytesIO(os.urandom(file_size))
     dest = provider.temp_name("dest")
-
-    def hit_api(action, path=None, url=None, data=None, headers=None, json=None):
-        if not url:
-            url = provider._get_url(path)
-
-        with provider._api() as client:
-            if not url:
-                path = path.lstrip("/")
-                url = client.base_url + path
-            head = {
-                      'Authorization': 'bearer {access_token}'.format(access_token=client.auth_provider.access_token),
-                      'content-type': 'application/json'}
-            if headers:
-                head.update(headers)
-            for k in head:
-                head[k] = str(head[k])
-            log.debug("hit_api %s %s", action, url)
-            req = getattr(requests, action)(
-                url,
-                stream=None,
-                headers=head,
-                json=json,
-                data=data)
-
-        if req.status_code > 202:
-            raise Exception("Unknown error %s %s" % (req.status_code, req.json()))
-
-        res = req.json()
-        return res
+    
+    direct_api = provider.prov._direct_api
 
     # Every other attempt throws a DisconnectError
     api_upload_calls = 0
@@ -62,11 +36,11 @@ def test_interrupted_file_upload(provider):
             if api_upload_calls % 2:
                 raise CloudDisconnectedError("Not connected")
             else:
-                return hit_api(action, path, url, data, headers, json)
+                return direct_api(action, path=path, url=url, data=data, headers=headers, json=json)
 
         # Send all other api calls through to onedrive
         else:
-            return hit_api(action, path, url, data, headers, json)
+            return direct_api(action, path=path, url=url, data=data, headers=headers, json=json)
 
     with patch.object(provider.prov, "_direct_api", side_effect=flaky_api):
         info = provider.create(dest, data)

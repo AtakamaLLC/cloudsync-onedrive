@@ -169,7 +169,9 @@ class OneDriveItem():
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
     case_sensitive = False
     default_sleep = 15
-    upload_block_size = 4 * 1024 * 1024
+    # Microsoft requests multiples of 320 KiB for upload_block_size
+    # https://docs.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0
+    upload_block_size = 10 * 320 * 1024
 
     name = 'onedrive'
     _base_url = 'https://graph.microsoft.com/v1.0/'
