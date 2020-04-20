@@ -731,7 +731,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     r = self._direct_api("put", url=upload_url, data=data, headers=headers)
                 except (CloudDisconnectedError, CloudTemporaryError) as e:
                     # Should we backoff here? Or have a max number of retries?
-                    log.exception("Exception during _upload_large, continuing, range=%s", cbrange)
+                    log.exception("Exception during _upload_large, continuing, range=%s, exception: %s", cbrange, type(e))
                     continue
 
                 data = file_like.read(self.upload_block_size)
