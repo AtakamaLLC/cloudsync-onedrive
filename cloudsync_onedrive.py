@@ -634,7 +634,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         else:
             ohash = None
             if self._is_biz:
-                if change['file']['size'] == 0:
+                if change['size'] == 0:
                     ohash = QXHASH_0
         if ohash is None:
             log.error("no hash for file? %s", pformat(change))
