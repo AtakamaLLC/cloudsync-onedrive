@@ -44,7 +44,7 @@ class OneDriveFileDoneError(Exception):
 
 
 log = logging.getLogger(__name__)
-
+QXHASH_0 = b"\0" * 20
 
 class OneDriveInfo(DirInfo):              # pylint: disable=too-few-public-methods
     # oid, hash, otype and path are included here to satisfy a bug in mypy,
@@ -634,8 +634,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             if ohash == "":
                 ohash = None
         else:
-            log.error("no hash for file? %s", pformat(change))
             ohash = None
+            if self._is_biz:
+                if change['size'] == 0:
+                    ohash = QXHASH_0
+        if ohash is None:
+            log.error("no hash for file? %s", pformat(change))
         return ohash
 
     def upload(self, oid, file_like, metadata=None) -> 'OInfo':
@@ -930,7 +934,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             if self._is_biz:
                 if item.file.hashes is None:
                     # This is the quickxor hash of b""
-                    ohash = b"\0" * 20
+                    ohash = QXHASH_0
                 else:
                     ohash = item.file.hashes.to_dict()["quickXorHash"]
             else:
