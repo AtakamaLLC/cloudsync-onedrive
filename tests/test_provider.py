@@ -69,11 +69,11 @@ def test_interrupted_file_upload(provider):
             return hit_api(action, path, url, data, headers, json)
 
     with patch.object(provider.prov, "_direct_api", side_effect=flaky_api):
-        provider.create(dest, data)
+        info = provider.create(dest, data)
 
-    root_info = provider.info_path("/")
-    dir_list = list(provider.listdir(root_info.oid))
-    log.debug("dir_list=%s", dir_list)
-    assert len(dir_list) == 1
-    assert dir_list[0].size == file_size
+    new_fh = BytesIO()
+    provider.download(info.oid, new_fh)
+    new_fh.seek(0, SEEK_END)
+    new_len = new_fh.tell()
+    assert new_len == file_size
 
