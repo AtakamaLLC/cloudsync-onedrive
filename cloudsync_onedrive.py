@@ -800,9 +800,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self.rename(oid, path)
 
         new_path = self._get_path(oid)
-        if new_path != path:
+        if not self.paths_match(path, new_path):
             log.error("path mismatch after rename -- wanted %s, got %s", path, new_path)
-            assert new_path == path  # must raise, cuz it's in the if block
+            raise CloudTemporaryError("path mismatch after rename")
 
         return oid
 
