@@ -712,8 +712,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             with self._api() as client:
                 r = self._upload_large(self._get_item(client, path=path).api_path + ":", file_like, conflict="fail")
             return self._info_from_rest(r, root=self.dirname(path))
-
-    def _upload_large(self, drive_path, file_like, conflict):
+    
+    def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
         with self._api():
             size = _get_size_and_seek0(file_like)
             r = self._direct_api("post", "%s/createUploadSession" % drive_path, json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
@@ -724,7 +724,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             max_retries_per_block = 10
 
             cbfrom = 0
-            retries = 0  # per block
+            retries = 0
             while data:
                 clen = len(data)             # fragment content size
                 cbto = cbfrom + clen - 1     # inclusive content byte range
@@ -737,8 +737,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s", cbrange, retries, type(e))
                     if retries >= max_retries_per_block:
                         raise e
-                    else:
-                        continue
+                    continue
 
                 data = file_like.read(self.upload_block_size)
                 cbfrom = cbto + 1
