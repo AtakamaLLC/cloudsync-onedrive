@@ -739,6 +739,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             parent, base = self.split(path)
 
             item = self._get_item(client, oid=oid)
+            old_path = item.path
 
             info = item.get()
 
@@ -765,8 +766,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     new_info.parent_reference = onedrivesdk.ItemReference()
                     new_info.parent_reference.id = new_parent_id
                     updated = True
-                if updated:
-                    item.update(new_info)
+                if not updated:
+                    return oid
+                item.update(new_info)
             except onedrivesdk.error.OneDriveError as e:
                 if e.code == ErrorCode.InvalidRequest:
                     base, location = self.split(path)
@@ -800,9 +802,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self.rename(oid, path)
 
         new_path = self._get_path(oid)
-        if not self.paths_match(path, new_path):
-            log.error("path mismatch after rename -- wanted %s, got %s", path, new_path)
-            raise CloudTemporaryError("path mismatch after rename")
+        new_dir, new_file = self.split(new_path)
+        old_dir, old_file = self.split(old_path)
+        if self.paths_match(old_dir, new_dir) and old_file == new_file:
+            log.error("old and new paths match after rename: %s", old_path)
+            raise CloudTemporaryError("old and new paths match after rename")
 
         return oid
 
