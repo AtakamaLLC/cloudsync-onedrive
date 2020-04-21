@@ -721,7 +721,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             data = file_like.read(self.upload_block_size)
 
+            max_retries_per_block = 10
+
             cbfrom = 0
+            retries = 0  # per block
             while data:
                 clen = len(data)             # fragment content size
                 cbto = cbfrom + clen - 1     # inclusive content byte range
@@ -730,12 +733,16 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     headers = {"Content-Length": clen, "Content-Range": cbrange}
                     r = self._direct_api("put", url=upload_url, data=data, headers=headers)
                 except (CloudDisconnectedError, CloudTemporaryError) as e:
-                    # Should we backoff here? Or have a max number of retries?
-                    log.exception("Exception during _upload_large, continuing, range=%s, exception: %s", cbrange, type(e))
-                    continue
+                    retries += 1
+                    log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s", cbrange, retries, type(e))
+                    if retries >= max_retries_per_block:
+                        raise e
+                    else:
+                        continue
 
                 data = file_like.read(self.upload_block_size)
                 cbfrom = cbto + 1
+                retries = 0
             return r
 
     def list_ns(self):
