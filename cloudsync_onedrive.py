@@ -37,7 +37,7 @@ from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
 
 
-__version__ = "0.1.12"
+__version__ = "0.1.13"
 
 SOCK_TIMEOUT = 180
 
