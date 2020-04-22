@@ -37,7 +37,7 @@ from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
 
 
-__version__ = "0.1.13"
+__version__ = "0.1.14"
 
 SOCK_TIMEOUT = 180
 
@@ -213,7 +213,9 @@ class OneDriveItem():
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
     case_sensitive = False
     default_sleep = 15
-    upload_block_size = 4 * 1024 * 1024
+    # Microsoft requests multiples of 320 KiB for upload_block_size
+    # https://docs.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0
+    upload_block_size = 10 * 320 * 1024
 
     name = 'onedrive'
     _base_url = 'https://graph.microsoft.com/v1.0/'
@@ -756,8 +758,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             with self._api() as client:
                 r = self._upload_large(self._get_item(client, path=path).api_path + ":", file_like, conflict="fail")
             return self._info_from_rest(r, root=self.dirname(path))
-
-    def _upload_large(self, drive_path, file_like, conflict):
+    
+    def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
         with self._api():
             size = _get_size_and_seek0(file_like)
             r = self._direct_api("post", "%s/createUploadSession" % drive_path, json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
@@ -765,15 +767,27 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             data = file_like.read(self.upload_block_size)
 
+            max_retries_per_block = 10
+
             cbfrom = 0
+            retries = 0
             while data:
                 clen = len(data)             # fragment content size
                 cbto = cbfrom + clen - 1     # inclusive content byte range
                 cbrange = "bytes %s-%s/%s" % (cbfrom, cbto, size)
-                headers = {"Content-Length": clen, "Content-Range": cbrange}
-                r = self._direct_api("put", url=upload_url, data=data, headers=headers)
+                try:
+                    headers = {"Content-Length": clen, "Content-Range": cbrange}
+                    r = self._direct_api("put", url=upload_url, data=data, headers=headers)
+                except (CloudDisconnectedError, CloudTemporaryError) as e:
+                    retries += 1
+                    log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s", cbrange, retries, type(e))
+                    if retries >= max_retries_per_block:
+                        raise e
+                    continue
+
                 data = file_like.read(self.upload_block_size)
                 cbfrom = cbto + 1
+                retries = 0
             return r
 
     def list_ns(self):
@@ -878,13 +892,14 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         pid = item["parentReference"].get("id")
         name = item["name"]
+        size = item["size"]
         mtime = item["lastModifiedDateTime"]
         shared = False
         if "createdBy" in item:
             shared = bool(item.get("remoteItem"))
 
         return OneDriveInfo(oid=iid, otype=otype, hash=ohash, path=path, pid=pid, name=name,
-                            mtime=mtime, shared=shared)
+                            size=size, mtime=mtime, shared=shared)
 
     def listdir(self, oid) -> Generator[OneDriveInfo, None, None]:
         with self._api() as client:
