@@ -26,6 +26,7 @@ import arrow
 
 import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
+from onedrivesdk_fork.http_response import HttpResponse
 import quickxorhash
 
 from cloudsync import Provider, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
@@ -37,6 +38,49 @@ from cloudsync.utils import debug_sig, memoize
 
 
 __version__ = "0.1.12"
+
+SOCK_TIMEOUT = 180
+
+class HttpProvider(onedrivesdk.HttpProvider):
+    def __init__(self):
+        self.session = requests.Session()
+
+    def send(self, method, headers, url, data=None, content=None, path=None):
+        if path:
+            with open(path, mode='rb') as f:
+                response = self.session.request(method,
+                                                url,
+                                                headers=headers,
+                                                data=f,
+                                                timeout=SOCK_TIMEOUT)
+        else:
+            response = self.session.request(method,
+                                            url,
+                                            headers=headers,
+                                            data=data,
+                                            json=content,
+                                            timeout=SOCK_TIMEOUT)
+        custom_response = HttpResponse(response.status_code, response.headers, response.text)
+        return custom_response
+
+    def download(self, headers, url, path):
+        response = requests.get(
+            url,
+            stream=True,
+            headers=headers,
+            timeout=SOCK_TIMEOUT)
+
+        if response.status_code == 200:
+            with open(path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=1024):
+                    if chunk:
+                        f.write(chunk)
+                        f.flush()
+            custom_response = HttpResponse(response.status_code, response.headers, None)
+        else:
+            custom_response = HttpResponse(response.status_code, response.headers, response.text)
+
+        return custom_response
 
 
 class OneDriveFileDoneError(Exception):
@@ -196,6 +240,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self.__cached_drive_to_name: Dict[str, str] = None
         self.__cached_name_to_drive: Dict[str, str] = None
         self.__cached_is_biz = None
+        self._http = HttpProvider()
 
     @property
     def __drive_to_name(self):
@@ -226,7 +271,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return client.base_url.rstrip("/") + "/" + api_path
 
     # names of args are compat with requests module
-    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None, json=None, raw_response=False, timeout=240):  # pylint: disable=redefined-outer-name
+    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None, 
+            json=None, raw_response=False, timeout=SOCK_TIMEOUT):  # pylint: disable=redefined-outer-name
         assert path or url
 
         if not url:
@@ -244,7 +290,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             for k in head:
                 head[k] = str(head[k])
             log.debug("direct %s %s", action, url)
-            req = getattr(requests, action)(
+            req = self._http.session.request(
+                action,
                 url,
                 stream=stream,
                 headers=head,
@@ -421,9 +468,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             self._ensure_event_loop()
 
             with self._api(needs_client=False):
-                http_provider = onedrivesdk.HttpProvider()
                 auth_provider = onedrivesdk.AuthProvider(
-                        http_provider=http_provider,
+                        http_provider=self._http,
                         client_id=self._oauth_config.app_id,
                         scopes=self._oauth_info.scopes)
 
@@ -444,7 +490,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                         )
 
                 auth_provider = onedrivesdk.AuthProvider(
-                        http_provider=http_provider,
+                        http_provider=self._http,
                         client_id=self._oauth_config.app_id,
                         session_type=MySession,
                         scopes=self._oauth_info.scopes)
@@ -473,7 +519,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     creds = {"refresh_token": new_refresh}
                     self._oauth_config.creds_changed(creds)
 
-                self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, http_provider)
+                self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, self._http)
                 self.__client.item = self.__client.item  # satisfies a lint confusion
                 self._creds = creds
 
