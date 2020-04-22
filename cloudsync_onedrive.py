@@ -288,7 +288,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             for k in head:
                 head[k] = str(head[k])
             log.debug("direct %s %s", action, url)
-            req = getattr(requests, action)(
+            req = session.request(
+                action,
                 url,
                 stream=stream,
                 headers=head,
