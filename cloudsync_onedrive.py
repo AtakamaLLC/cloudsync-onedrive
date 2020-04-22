@@ -66,7 +66,8 @@ class HttpProvider(onedrivesdk.HttpProvider):
         response = requests.get(
             url,
             stream=True,
-            headers=headers)
+            headers=headers,
+            timeout=SOCK_TIMEOUT)
 
         if response.status_code == 200:
             with open(path, 'wb') as f:
