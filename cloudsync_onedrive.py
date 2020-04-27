@@ -870,7 +870,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self.rename(oid, path)
 
         new_path = self._get_path(oid)
-        if self.paths_match(old_path, new_path, for_display=True):
+        if self.paths_match(old_path, new_path, for_display=True): # pragma: no cover
             log.error("rename did not change cloud file path: old=%s new=%s", old_path, new_path)
             raise CloudTemporaryError("rename did not change cloud file path")
 
