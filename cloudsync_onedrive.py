@@ -26,6 +26,7 @@ import arrow
 
 import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
+from onedrivesdk_fork.http_response import HttpResponse
 import quickxorhash
 
 from cloudsync import Provider, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
@@ -36,7 +37,50 @@ from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
 
 
-__version__ = "0.1.11"
+__version__ = "0.1.14"
+
+SOCK_TIMEOUT = 180
+
+class HttpProvider(onedrivesdk.HttpProvider):
+    def __init__(self):
+        self.session = requests.Session()
+
+    def send(self, method, headers, url, data=None, content=None, path=None):
+        if path:
+            with open(path, mode='rb') as f:
+                response = self.session.request(method,
+                                                url,
+                                                headers=headers,
+                                                data=f,
+                                                timeout=SOCK_TIMEOUT)
+        else:
+            response = self.session.request(method,
+                                            url,
+                                            headers=headers,
+                                            data=data,
+                                            json=content,
+                                            timeout=SOCK_TIMEOUT)
+        custom_response = HttpResponse(response.status_code, response.headers, response.text)
+        return custom_response
+
+    def download(self, headers, url, path):
+        response = requests.get(
+            url,
+            stream=True,
+            headers=headers,
+            timeout=SOCK_TIMEOUT)
+
+        if response.status_code == 200:
+            with open(path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=1024):
+                    if chunk:
+                        f.write(chunk)
+                        f.flush()
+            custom_response = HttpResponse(response.status_code, response.headers, None)
+        else:
+            custom_response = HttpResponse(response.status_code, response.headers, response.text)
+
+        return custom_response
 
 
 class OneDriveFileDoneError(Exception):
@@ -44,7 +88,7 @@ class OneDriveFileDoneError(Exception):
 
 
 log = logging.getLogger(__name__)
-
+QXHASH_0 = b"\0" * 20
 
 class OneDriveInfo(DirInfo):              # pylint: disable=too-few-public-methods
     # oid, hash, otype and path are included here to satisfy a bug in mypy,
@@ -169,7 +213,9 @@ class OneDriveItem():
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
     case_sensitive = False
     default_sleep = 15
-    upload_block_size = 4 * 1024 * 1024
+    # Microsoft requests multiples of 320 KiB for upload_block_size
+    # https://docs.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0
+    upload_block_size = 10 * 320 * 1024
 
     name = 'onedrive'
     _base_url = 'https://graph.microsoft.com/v1.0/'
@@ -196,6 +242,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self.__cached_drive_to_name: Dict[str, str] = None
         self.__cached_name_to_drive: Dict[str, str] = None
         self.__cached_is_biz = None
+        self._http = HttpProvider()
 
     @property
     def __drive_to_name(self):
@@ -226,7 +273,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return client.base_url.rstrip("/") + "/" + api_path
 
     # names of args are compat with requests module
-    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None, json=None, raw_response=False):  # pylint: disable=redefined-outer-name
+    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None, 
+            json=None, raw_response=False, timeout=SOCK_TIMEOUT):  # pylint: disable=redefined-outer-name
         assert path or url
 
         if not url:
@@ -244,12 +292,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             for k in head:
                 head[k] = str(head[k])
             log.debug("direct %s %s", action, url)
-            req = getattr(requests, action)(
+            req = self._http.session.request(
+                action,
                 url,
                 stream=stream,
                 headers=head,
                 json=json,
-                data=data)
+                data=data,
+                timeout=timeout
+            )
 
         if raw_response:
             return req
@@ -419,9 +470,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             self._ensure_event_loop()
 
             with self._api(needs_client=False):
-                http_provider = onedrivesdk.HttpProvider()
                 auth_provider = onedrivesdk.AuthProvider(
-                        http_provider=http_provider,
+                        http_provider=self._http,
                         client_id=self._oauth_config.app_id,
                         scopes=self._oauth_info.scopes)
 
@@ -442,7 +492,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                         )
 
                 auth_provider = onedrivesdk.AuthProvider(
-                        http_provider=http_provider,
+                        http_provider=self._http,
                         client_id=self._oauth_config.app_id,
                         session_type=MySession,
                         scopes=self._oauth_info.scopes)
@@ -471,7 +521,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     creds = {"refresh_token": new_refresh}
                     self._oauth_config.creds_changed(creds)
 
-                self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, http_provider)
+                self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, self._http)
                 self.__client.item = self.__client.item  # satisfies a lint confusion
                 self._creds = creds
 
@@ -632,8 +682,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             if ohash == "":
                 ohash = None
         else:
-            log.error("no hash for file? %s", pformat(change))
             ohash = None
+            if self._is_biz:
+                if change['size'] == 0:
+                    ohash = QXHASH_0
+        if ohash is None:
+            log.error("no hash for file? %s", pformat(change))
         return ohash
 
     def upload(self, oid, file_like, metadata=None) -> 'OInfo':
@@ -688,7 +742,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 name = urllib.parse.quote(base)
                 api_path += "/children('" + name + "')/content"
                 try:
-                    r = self._direct_api("put", api_path, data=file_like, headers={'content-type': 'text/plain'})
+                    headers = {'content-type': 'text/plain'}
+                    r = self._direct_api("put", api_path, data=file_like, headers=headers)  # default timeout ok, size == 0 from "if" condition
                 except CloudTemporaryError:
                     info = self.info_path(path)
                     # onedrive can fail with ConnectionResetByPeer, but still secretly succeed... just without returning info
@@ -703,8 +758,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             with self._api() as client:
                 r = self._upload_large(self._get_item(client, path=path).api_path + ":", file_like, conflict="fail")
             return self._info_from_rest(r, root=self.dirname(path))
-
-    def _upload_large(self, drive_path, file_like, conflict):
+    
+    def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
         with self._api():
             size = _get_size_and_seek0(file_like)
             r = self._direct_api("post", "%s/createUploadSession" % drive_path, json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
@@ -712,14 +767,27 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             data = file_like.read(self.upload_block_size)
 
+            max_retries_per_block = 10
+
             cbfrom = 0
+            retries = 0
             while data:
                 clen = len(data)             # fragment content size
                 cbto = cbfrom + clen - 1     # inclusive content byte range
                 cbrange = "bytes %s-%s/%s" % (cbfrom, cbto, size)
-                r = self._direct_api("put", url=upload_url, data=data, headers={"Content-Length": clen, "Content-Range": cbrange})
+                try:
+                    headers = {"Content-Length": clen, "Content-Range": cbrange}
+                    r = self._direct_api("put", url=upload_url, data=data, headers=headers)
+                except (CloudDisconnectedError, CloudTemporaryError) as e:
+                    retries += 1
+                    log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s", cbrange, retries, type(e))
+                    if retries >= max_retries_per_block:
+                        raise e
+                    continue
+
                 data = file_like.read(self.upload_block_size)
                 cbfrom = cbto + 1
+                retries = 0
             return r
 
     def list_ns(self):
@@ -828,13 +896,14 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         pid = item["parentReference"].get("id")
         name = item["name"]
+        size = item["size"]
         mtime = item["lastModifiedDateTime"]
         shared = False
         if "createdBy" in item:
             shared = bool(item.get("remoteItem"))
 
         return OneDriveInfo(oid=iid, otype=otype, hash=ohash, path=path, pid=pid, name=name,
-                            mtime=mtime, shared=shared)
+                            size=size, mtime=mtime, shared=shared)
 
     def listdir(self, oid) -> Generator[OneDriveInfo, None, None]:
         with self._api() as client:
@@ -930,7 +999,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             if self._is_biz:
                 if item.file.hashes is None:
                     # This is the quickxor hash of b""
-                    ohash = b"\0" * 20
+                    ohash = QXHASH_0
                 else:
                     ohash = item.file.hashes.to_dict()["quickXorHash"]
             else:

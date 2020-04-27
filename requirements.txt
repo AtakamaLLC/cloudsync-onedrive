@@ -11,3 +11,4 @@ cloudsync>=v1.3.22a2
 onedrivesdk_fork
 quickxorhash
 codecov
+pylint-requests
