@@ -221,9 +221,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     _base_url = 'https://graph.microsoft.com/v1.0/'
 
     _oauth_info = OAuthProviderInfo(
-        auth_url="https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+        auth_url="https://login.microsoftonline.com/common/oauth2/v2.0/authorize?prompt=login",
         token_url="https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        scopes=['profile', 'openid', 'email', 'files.readwrite.all', 'sites.readwrite.all', 'offline_access', 'group.readwrite.all'],
+        scopes=['profile', 'openid', 'email', 'files.readwrite.all', 'sites.readwrite.all', 'offline_access', 'groupmember.read.all'],
     )
 
     _additional_invalid_characters = '#'
@@ -273,7 +273,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return client.base_url.rstrip("/") + "/" + api_path
 
     # names of args are compat with requests module
-    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None, 
+    def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None,
             json=None, raw_response=False, timeout=SOCK_TIMEOUT):  # pylint: disable=redefined-outer-name
         assert path or url
 
@@ -335,6 +335,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         # team sharepoint drives
         groups = self._direct_api("get", "/groups")
+        #log.debug("groups: %s", groups)
         for group in groups.get("value", []):
             group_name = group["displayName"]
             try:
@@ -758,7 +759,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             with self._api() as client:
                 r = self._upload_large(self._get_item(client, path=path).api_path + ":", file_like, conflict="fail")
             return self._info_from_rest(r, root=self.dirname(path))
-    
+
     def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
         with self._api():
             size = _get_size_and_seek0(file_like)
