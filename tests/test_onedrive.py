@@ -39,6 +39,11 @@ class FakeGraphApi(FakeApi):
         self.called("quota", (ctx, req))
         return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity', 'id': 'bdd46067213df13', 'driveType': 'personal', 'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}}, 'quota': {'deleted': 15735784, 'remaining': 1104878763593, 'state': 'normal', 'total': 1104880336896, 'used': 1573303}}
 
+    @api_route("/me/drives")
+    def me_drives(self, ctx, req):
+        self.called("_set_drive_list", (ctx, req))
+        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}]}
+
     @api_route("/drives/")
     def default(self, ctx, req):
         upload_url = self.uri("/upload")
@@ -138,7 +143,7 @@ def test_namespace_set_disconn():
 def test_namespace_set_other():
     _, odp = fake_odp()
 
-    def raise_error():
+    def raise_error(a, b):
         raise CloudTokenError("yo")
 
     with patch.object(odp, '_direct_api', side_effect=raise_error):

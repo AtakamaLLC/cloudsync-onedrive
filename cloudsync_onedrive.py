@@ -27,7 +27,6 @@ import arrow
 import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
 from onedrivesdk_fork.http_response import HttpResponse
-import quickxorhash
 
 from cloudsync import Provider, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
 from cloudsync.exceptions import CloudTokenError, CloudDisconnectedError, CloudFileNotFoundError, \
@@ -36,8 +35,10 @@ from cloudsync.oauth import OAuthConfig, OAuthProviderInfo
 from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
 
+import quickxorhash
 
-__version__ = "0.1.16"
+
+__version__ = "0.1.17"
 
 SOCK_TIMEOUT = 180
 
@@ -223,7 +224,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     _oauth_info = OAuthProviderInfo(
         auth_url="https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
         token_url="https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        scopes=['profile', 'openid', 'email', 'files.readwrite.all', 'sites.readwrite.all', 'offline_access', 'group.readwrite.all'],
+        scopes=['profile', 'openid', 'email', 'files.readwrite.all', 'sites.readwrite.all', 'offline_access'],
     )
 
     _additional_invalid_characters = '#'
@@ -320,49 +321,34 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return res
 
-    def _set_drive_list(self):      # pylint: disable=too-many-locals
+    def _set_drive_list(self):
         all_drives: Dict[str, str] = {}
 
-        # personal drive, including shared folders
+        # personal drives (including shared folders)
         try:
-            dat = self._direct_api("get", "/me/drive/")
-            all_drives[dat['id']] = "personal"
+            drives = self._direct_api("get", "/me/drives")
+            for drive in drives.get("value", []):
+                all_drives[drive["id"]] = drive.get("name", "personal")
         except CloudDisconnectedError:
             raise
         except Exception as e:
-            log.debug("error getting info about onedrive %s", repr(e))
+            log.error("failed to get personal drive info: %s", repr(e))
             raise CloudTokenError("Invalid account, or no onedrive access")
 
-        # team sharepoint drives
-        groups = self._direct_api("get", "/groups")
-        for group in groups.get("value", []):
-            group_name = group["displayName"]
+        # sharepoint drives (including 'shared documents' of teams/groups)
+        sites = self._direct_api("get", "/sites?search=*")
+        for site in sites.get("value", []):
             try:
-                drive = self._direct_api("get", "/groups/%s/drive" % group["id"])
-                drive_id = drive["id"]
-                all_drives[drive_id] = "team/" + group_name
-            except (OneDriveError, CloudException) as err:
-                log.warning("Failed to get drive info for %s. Exception: %s", group["id"], repr(err))
-
-        try:
-            # drives linked to other "sites"
-            sites = self._direct_api("get", "/sites?select=siteCollection&$filter=siteCollection/root+ne+null")
-            hosts = []
-            for site in sites.get('value', []):
-                siteid = site.get("siteCollection")["hostname"]
-                hosts.append(siteid)
-                drives = self._direct_api("get", "/sites/%s/drives" % siteid)
-                for drive in drives.get('value', []):
-                    drive_id = drive["id"]
-                    drive_name = drive["name"]
-                    all_drives[drive['id']] = siteid + '/' + drive_name
+                drives = self._direct_api("get", f"/sites/{site['id']}/drives")
+                for drive in drives.get("value", []):
+                    all_drives[drive["id"]] = f"{site['displayName']}/{drive['name']}"
                 # TODO: support subsites
                 # ssites = self._direct_api("get","/sites/%s/sites" % siteid)
                 # log.info("%s SSITES %s", siteid, ssites)
-        except Exception:
-            pass
+            except (OneDriveError, CloudException) as e:
+                log.warning("failed to get sharepoint drive info: %s", repr(e))
 
-        log.debug("all drives %s", all_drives)
+        log.debug("all drives: %s", all_drives)
         self.__cached_drive_to_name = all_drives
         self.__cached_name_to_drive = {v: k for k, v in all_drives.items()}
 
@@ -1160,7 +1146,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @property
     def _test_namespace(self):
-        return "personal"
+        return self.__drive_to_name[self._personal_id]
 
 
 class OneDriveBusinessTestProvider(OneDriveProvider):
