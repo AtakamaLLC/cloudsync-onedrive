@@ -18,6 +18,8 @@ log = logging.getLogger(__name__)
 NEW_TOKEN = "weird-token-od"
 
 class FakeGraphApi(FakeApi):
+    multiple_personal_drives = False
+
     @api_route("/upload")
     def upload(self, ctx, req):
         self.called("upload", (ctx, req))
@@ -42,6 +44,8 @@ class FakeGraphApi(FakeApi):
     @api_route("/me/drives")
     def me_drives(self, ctx, req):
         self.called("_set_drive_list", (ctx, req))
+        if self.multiple_personal_drives:
+            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}, {'id': '31fd31276064ddb', 'name': 'drive-2'}]}
         return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}]}
 
     @api_route("/drives/")
@@ -126,6 +130,13 @@ def test_namespace_get():
 def test_namespace_set():
     _, odp = fake_odp()
     odp.namespace = "personal"
+    nsid = odp.namespace_id
+    assert nsid
+
+def test_namespace_multiple_personal_drives():
+    srv, odp = fake_odp()
+    srv.multiple_personal_drives = True
+    odp.namespace = "personal/drive-2"
     nsid = odp.namespace_id
     assert nsid
 

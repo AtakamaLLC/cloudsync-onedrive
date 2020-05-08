@@ -23,6 +23,7 @@ import webbrowser
 from base64 import urlsafe_b64decode, b64encode
 import requests
 import arrow
+from urllib.parse import urlparse
 
 import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
@@ -324,28 +325,37 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _set_drive_list(self):
         all_drives: Dict[str, str] = {}
 
-        # personal drives (including shared folders)
+        # personal drive: "most users will only have a single drive resource" - Microsoft
+        # see: https://docs.microsoft.com/en-us/graph/api/drive-list?view=graph-rest-1.0&tabs=http
         try:
-            drives = self._direct_api("get", "/me/drives")
-            for drive in drives.get("value", []):
-                all_drives[drive["id"]] = drive.get("name", "personal")
+            drives = self._direct_api("get", "/me/drives")["value"]
+            if len(drives) > 1:
+                for drive in drives:
+                    all_drives[drive["id"]] = f"personal/{drive['name']}"
+            else:
+                all_drives[drives[0]["id"]] = "personal"
         except CloudDisconnectedError:
             raise
         except Exception as e:
             log.error("failed to get personal drive info: %s", repr(e))
             raise CloudTokenError("Invalid account, or no onedrive access")
 
-        # sharepoint drives (including 'shared documents' of teams/groups)
+        # sharepoint drives - a user can have access to multiple sites, with multiple drives in each
         sites = self._direct_api("get", "/sites?search=*")
         for site in sites.get("value", []):
             try:
+                # TODO: use configurable regex for filtering?
+                url_path = urlparse(site["webUrl"]).path.lower()
+                if url_path.startswith("/portals/"):
+                    continue
+
                 drives = self._direct_api("get", f"/sites/{site['id']}/drives")
                 for drive in drives.get("value", []):
                     all_drives[drive["id"]] = f"{site['displayName']}/{drive['name']}"
                 # TODO: support subsites
                 # ssites = self._direct_api("get","/sites/%s/sites" % siteid)
                 # log.info("%s SSITES %s", siteid, ssites)
-            except (OneDriveError, CloudException) as e:
+            except Exception as e:
                 log.warning("failed to get sharepoint drive info: %s", repr(e))
 
         log.debug("all drives: %s", all_drives)
@@ -1146,7 +1156,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @property
     def _test_namespace(self):
-        return self.__drive_to_name[self._personal_id]
+        return "personal"
 
 
 class OneDriveBusinessTestProvider(OneDriveProvider):
