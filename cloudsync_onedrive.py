@@ -23,7 +23,6 @@ import webbrowser
 from base64 import urlsafe_b64decode, b64encode
 import requests
 import arrow
-from urllib.parse import urlparse
 
 import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
@@ -31,7 +30,7 @@ from onedrivesdk_fork.http_response import HttpResponse
 
 from cloudsync import Provider, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
 from cloudsync.exceptions import CloudTokenError, CloudDisconnectedError, CloudFileNotFoundError, \
-    CloudFileExistsError, CloudCursorError, CloudTemporaryError, CloudException, CloudNamespaceError
+    CloudFileExistsError, CloudCursorError, CloudTemporaryError, CloudNamespaceError
 from cloudsync.oauth import OAuthConfig, OAuthProviderInfo
 from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
@@ -345,7 +344,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         for site in sites.get("value", []):
             try:
                 # TODO: use configurable regex for filtering?
-                url_path = urlparse(site["webUrl"]).path.lower()
+                url_path = urllib.parse.urlparse(site["webUrl"]).path.lower()
                 if url_path.startswith("/portals/"):
                     continue
 
