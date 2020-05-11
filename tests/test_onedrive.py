@@ -18,6 +18,8 @@ log = logging.getLogger(__name__)
 NEW_TOKEN = "weird-token-od"
 
 class FakeGraphApi(FakeApi):
+    multiple_personal_drives = False
+
     @api_route("/upload")
     def upload(self, ctx, req):
         self.called("upload", (ctx, req))
@@ -38,6 +40,13 @@ class FakeGraphApi(FakeApi):
     def me_drive(self, ctx, req):
         self.called("quota", (ctx, req))
         return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity', 'id': 'bdd46067213df13', 'driveType': 'personal', 'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}}, 'quota': {'deleted': 15735784, 'remaining': 1104878763593, 'state': 'normal', 'total': 1104880336896, 'used': 1573303}}
+
+    @api_route("/me/drives")
+    def me_drives(self, ctx, req):
+        self.called("_set_drive_list", (ctx, req))
+        if self.multiple_personal_drives:
+            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}, {'id': '31fd31276064ddb', 'name': 'drive-2'}]}
+        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}]}
 
     @api_route("/drives/")
     def default(self, ctx, req):
@@ -124,6 +133,13 @@ def test_namespace_set():
     nsid = odp.namespace_id
     assert nsid
 
+def test_namespace_multiple_personal_drives():
+    srv, odp = fake_odp()
+    srv.multiple_personal_drives = True
+    odp.namespace = "personal/drive-2"
+    nsid = odp.namespace_id
+    assert nsid
+
 def test_namespace_set_err():
     _, odp = fake_odp()
     with pytest.raises(CloudNamespaceError):
@@ -138,7 +154,7 @@ def test_namespace_set_disconn():
 def test_namespace_set_other():
     _, odp = fake_odp()
 
-    def raise_error():
+    def raise_error(a, b):
         raise CloudTokenError("yo")
 
     with patch.object(odp, '_direct_api', side_effect=raise_error):
