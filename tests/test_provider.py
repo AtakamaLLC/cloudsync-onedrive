@@ -1,5 +1,5 @@
 """Imported test suite"""
-
+import urllib.parse
 import io
 import requests
 from cloudsync.tests import *
@@ -52,6 +52,14 @@ def test_interrupted_file_upload(provider):
     assert new_len == file_size #nosec
 
 def test_url_encoding(provider):
+    # Files with a pound causes OneDrive to throw an Error if not url encoded
     dest = provider.temp_name("dest ##.txt")
+    dest_empty = provider.temp_name("dest empty ##.txt")
     info = provider.create(dest, io.BytesIO(b"hello"))
-    log.info(f"REED_DEBUG, {info}")
+    provider.create(dest_empty, io.BytesIO())  #  Won't create session if file is empty
+    log.info(provider.info_path(dest))
+    log.info(provider.info_path(info.path))
+    log.info(provider.info_path(urllib.parse.quote(info.path)))
+    log.info(provider.info_oid(info.oid))
+    log.info(list(provider.listdir(root_info.oid)))
+    assert False

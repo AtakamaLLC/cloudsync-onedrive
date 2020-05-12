@@ -187,7 +187,8 @@ class OneDriveItem():
         if self.__oid:
             return "/drives/%s/items/%s" % (self._drive_id, self.__oid)
         if self.__path:
-            return "/drives/%s/root:%s" % (self._drive_id, self.__path)
+            enc_path = urllib.parse.quote(self.__path)
+            return "/drives/%s/root:%s" % (self._drive_id, enc_path)
         raise AssertionError("This should not happen, since __init__ verifies that there is one or the other")
 
     def get(self):
@@ -377,6 +378,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             status = req.status_code
             try:
                 dat = req.json()
+                log.info(f"REED_DEBUG, json_response: {dat}")
                 msg = dat["error"]["message"]
                 code = dat["error"]["code"]
             except json.JSONDecodeError:
@@ -757,7 +759,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
         with self._api():
             size = _get_size_and_seek0(file_like)
-            r = self._direct_api("post", "%s/createUploadSession" % drive_path, json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
+            name = urllib.parse.quote(drive_path)
+            r = self._direct_api("post", "%s/createUploadSession" % name, json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
             upload_url = r["uploadUrl"]
 
             data = file_like.read(self.upload_block_size)
