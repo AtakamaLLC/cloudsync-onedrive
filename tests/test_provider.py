@@ -51,3 +51,7 @@ def test_interrupted_file_upload(provider):
     new_len = new_fh.tell()
     assert new_len == file_size #nosec
 
+def test_url_encoding(provider):
+    dest = provider.temp_name("dest ##.txt")
+    info = provider.create(dest, io.BytesIO(b"hello"))
+    log.info(f"REED_DEBUG, {info}")
