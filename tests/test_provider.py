@@ -54,12 +54,16 @@ def test_interrupted_file_upload(provider):
 def test_url_encoding(provider):
     # Files with a pound causes OneDrive to throw an Error if not url encoded
     dest = provider.temp_name("dest ##.txt")
-    dest_empty = provider.temp_name("dest empty ##.txt")
+    fold = provider.temp_name("folder ##")
+    sub_fold = fold + "/sub folder ##"
+    dest_empty = fold + "/dest empty ##.txt"
+    log.info("Mkdir: %s" % provider.mkdir(fold))
+    provider.mkdir(sub_fold)
     info = provider.create(dest, io.BytesIO(b"hello"))
-    provider.create(dest_empty, io.BytesIO())  #  Won't create session if file is empty
-    log.info(provider.info_path(dest))
-    log.info(provider.info_path(info.path))
-    log.info(provider.info_path(urllib.parse.quote(info.path)))
-    log.info(provider.info_oid(info.oid))
-    log.info(list(provider.listdir(root_info.oid)))
+    empty_info = provider.create(dest_empty, io.BytesIO())  #  Won't create session if file is empty
+    provider.download(info.oid, io.BytesIO())
+    provider.delete(empty_info.oid)
+    fold_info = provider.info_path(fold)
+    log.info(list(provider.listdir(fold_info.oid)))
+    provider.rename(info.oid, provider.temp_name("another dest ##.txt"))
     assert False

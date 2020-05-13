@@ -759,8 +759,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
         with self._api():
             size = _get_size_and_seek0(file_like)
-            name = urllib.parse.quote(drive_path)
-            r = self._direct_api("post", "%s/createUploadSession" % name, json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
+            r = self._direct_api("post", "%s/createUploadSession" % drive_path, json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
             upload_url = r["uploadUrl"]
 
             data = file_like.read(self.upload_block_size)
@@ -820,10 +819,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             try:
                 updated = False
                 if info.name != base:
-                    need_temp = False
                     if info.name.lower() == base.lower():
-                        need_temp = True
-                    if need_temp:
                         new_info.name = base + os.urandom(8).hex()
                         item.update(new_info)
                     new_info.name = base
