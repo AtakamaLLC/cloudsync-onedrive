@@ -84,7 +84,7 @@ def test_url_encoding(provider):
     provider.listdir(sub_fold_info.oid)
 
     ents = list(provider.walk("/"))
-    assert len(ents) == len(expected_paths)
+    assert len(ents) == len(expected_paths) #nosec
     for ent in ents:
-        assert ent.path in expected_paths
+        assert ent.path in expected_paths #nosec
 
