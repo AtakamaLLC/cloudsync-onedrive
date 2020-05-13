@@ -378,7 +378,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             status = req.status_code
             try:
                 dat = req.json()
-                log.info(f"REED_DEBUG, json_response: {dat}")
                 msg = dat["error"]["message"]
                 code = dat["error"]["code"]
             except json.JSONDecodeError:

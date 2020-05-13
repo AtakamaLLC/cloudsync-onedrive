@@ -1,5 +1,5 @@
 """Imported test suite"""
-import urllib.parse
+
 import io
 import requests
 from cloudsync.tests import *
@@ -52,18 +52,39 @@ def test_interrupted_file_upload(provider):
     assert new_len == file_size #nosec
 
 def test_url_encoding(provider):
+    expected_paths = []
+
     # Files with a pound causes OneDrive to throw an Error if not url encoded
-    dest = provider.temp_name("dest ##.txt")
-    fold = provider.temp_name("folder ##")
-    sub_fold = fold + "/sub folder ##"
-    dest_empty = fold + "/dest empty ##.txt"
-    log.info("Mkdir: %s" % provider.mkdir(fold))
+    dest = provider.temp_name("de'st ##.txt")
+    rename_dest = provider.temp_name("rename # dest '' ##.txt")
+    fold = provider.temp_name("fo'lder #'#")
+    sub_fold = fold + "/sub f'o'lder ##"
+    dest_empty = fold + "/dest empty '##'.txt"
+    sub_dest_empty = sub_fold + "/sub 'dest' empty ##.txt"
+
+    provider.mkdir(fold)
+    expected_paths.append(fold)
     provider.mkdir(sub_fold)
+    expected_paths.append(sub_fold)
+
     info = provider.create(dest, io.BytesIO(b"hello"))
-    empty_info = provider.create(dest_empty, io.BytesIO())  #  Won't create session if file is empty
+    provider.rename(info.oid, rename_dest)
+    expected_paths.append(rename_dest)
     provider.download(info.oid, io.BytesIO())
+
+    # Hits different endpoint if file is zero bytes
+    empty_info = provider.create(dest_empty, io.BytesIO())
     provider.delete(empty_info.oid)
+    provider.create(sub_dest_empty, io.BytesIO(b"chow"))
+    expected_paths.append(sub_dest_empty)
+
     fold_info = provider.info_path(fold)
-    log.info(list(provider.listdir(fold_info.oid)))
-    provider.rename(info.oid, provider.temp_name("another dest ##.txt"))
-    assert False
+    provider.listdir(fold_info.oid)
+    sub_fold_info = provider.info_path(sub_fold)
+    provider.listdir(sub_fold_info.oid)
+
+    ents = list(provider.walk("/"))
+    assert len(ents) == len(expected_paths)
+    for ent in ents:
+        assert ent.path in expected_paths
+
