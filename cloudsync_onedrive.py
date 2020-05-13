@@ -38,7 +38,7 @@ from cloudsync.utils import debug_sig, memoize
 import quickxorhash
 
 
-__version__ = "0.1.17"
+__version__ = "0.1.18"
 
 SOCK_TIMEOUT = 180
 
@@ -187,7 +187,8 @@ class OneDriveItem():
         if self.__oid:
             return "/drives/%s/items/%s" % (self._drive_id, self.__oid)
         if self.__path:
-            return "/drives/%s/root:%s" % (self._drive_id, self.__path)
+            enc_path = urllib.parse.quote(self.__path)
+            return "/drives/%s/root:%s" % (self._drive_id, enc_path)
         raise AssertionError("This should not happen, since __init__ verifies that there is one or the other")
 
     def get(self):
@@ -817,9 +818,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             try:
                 updated = False
                 if info.name != base:
-                    need_temp = False
-                    if info.name.lower() == base.lower():
-                        need_temp = True
+                    need_temp = info.name.lower() == base.lower()
                     if need_temp:
                         new_info.name = base + os.urandom(8).hex()
                         item.update(new_info)

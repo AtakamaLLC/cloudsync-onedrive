@@ -51,3 +51,40 @@ def test_interrupted_file_upload(provider):
     new_len = new_fh.tell()
     assert new_len == file_size #nosec
 
+def test_url_encoding(provider):
+    expected_paths = []
+
+    # Files with a pound causes OneDrive to throw an Error if not url encoded
+    dest = provider.temp_name("de'st ##.txt")
+    rename_dest = provider.temp_name("rename # dest '' ##.txt")
+    fold = provider.temp_name("fo'lder #'#")
+    sub_fold = fold + "/sub f'o'lder ##"
+    dest_empty = fold + "/dest empty '##'.txt"
+    sub_dest_empty = sub_fold + "/sub 'dest' empty ##.txt"
+
+    provider.mkdir(fold)
+    expected_paths.append(fold)
+    provider.mkdir(sub_fold)
+    expected_paths.append(sub_fold)
+
+    info = provider.create(dest, io.BytesIO(b"hello"))
+    provider.rename(info.oid, rename_dest)
+    expected_paths.append(rename_dest)
+    provider.download(info.oid, io.BytesIO())
+
+    # Hits different endpoint if file is zero bytes
+    empty_info = provider.create(dest_empty, io.BytesIO())
+    provider.delete(empty_info.oid)
+    provider.create(sub_dest_empty, io.BytesIO(b"chow"))
+    expected_paths.append(sub_dest_empty)
+
+    fold_info = provider.info_path(fold)
+    provider.listdir(fold_info.oid)
+    sub_fold_info = provider.info_path(sub_fold)
+    provider.listdir(sub_fold_info.oid)
+
+    ents = list(provider.walk("/"))
+    assert len(ents) == len(expected_paths) #nosec
+    for ent in ents:
+        assert ent.path in expected_paths #nosec
+
