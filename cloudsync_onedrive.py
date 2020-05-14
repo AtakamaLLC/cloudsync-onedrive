@@ -809,7 +809,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             old_parent_id = info.parent_reference.id
 
-            new_parent_item = self._get_item(client, path=parent)
             new_parent_info = self.info_path(parent)
             new_parent_id = new_parent_info.oid
 
