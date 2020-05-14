@@ -71,7 +71,7 @@ def test_url_encoding(provider):
     info = provider.create(dest, io.BytesIO(b"hello"))
     provider.rename(info.oid, rename_dest)
     expected_paths.append(rename_dest)
-    #assert provider.exists_path(rename_dest)
+    assert provider.exists_path(rename_dest) #nosec
     provider.download(info.oid, io.BytesIO())
 
     # Hits different endpoint if file is zero bytes
