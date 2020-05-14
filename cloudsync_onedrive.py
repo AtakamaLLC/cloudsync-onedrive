@@ -38,7 +38,7 @@ from cloudsync.utils import debug_sig, memoize
 import quickxorhash
 
 
-__version__ = "0.1.18"
+__version__ = "0.1.19" # pragma: no cover
 
 SOCK_TIMEOUT = 180
 
@@ -809,9 +809,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             old_parent_id = info.parent_reference.id
 
-            new_parent_item = self._get_item(client, path=parent)
-            new_parent_info = new_parent_item.get()
-            new_parent_id = new_parent_info.id
+            new_parent_info = self.info_path(parent)
+            new_parent_id = new_parent_info.oid
 
             new_info: onedrivesdk.Item = onedrivesdk.Item()
 
@@ -824,7 +823,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                         item.update(new_info)
                     new_info.name = base
                     updated = True
-                if old_parent_id != new_parent_info.id:
+                if old_parent_id != new_parent_info.oid:
                     new_info.parent_reference = onedrivesdk.ItemReference()
                     new_info.parent_reference.id = new_parent_id
                     updated = True
@@ -1009,8 +1008,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def exists_path(self, path) -> bool:
         try:
-            with self._api() as client:
-                return bool(self._get_item(client, path=path).get())
+            return bool(self.info_path(path))
         except CloudFileNotFoundError:
             return False
 

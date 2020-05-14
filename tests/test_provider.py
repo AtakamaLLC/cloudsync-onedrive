@@ -60,7 +60,8 @@ def test_url_encoding(provider):
     fold = provider.temp_name("fo'lder #'#")
     sub_fold = fold + "/sub f'o'lder ##"
     dest_empty = fold + "/dest empty '##'.txt"
-    sub_dest_empty = sub_fold + "/sub 'dest' empty ##.txt"
+    sub_dest = sub_fold + "/sub 'dest' empty ##.txt"
+    sub_dest_rename = sub_fold + "/sub rename 'dest' empty ##.txt"
 
     provider.mkdir(fold)
     expected_paths.append(fold)
@@ -70,13 +71,15 @@ def test_url_encoding(provider):
     info = provider.create(dest, io.BytesIO(b"hello"))
     provider.rename(info.oid, rename_dest)
     expected_paths.append(rename_dest)
+    assert provider.exists_path(rename_dest) #nosec
     provider.download(info.oid, io.BytesIO())
 
     # Hits different endpoint if file is zero bytes
     empty_info = provider.create(dest_empty, io.BytesIO())
     provider.delete(empty_info.oid)
-    provider.create(sub_dest_empty, io.BytesIO(b"chow"))
-    expected_paths.append(sub_dest_empty)
+    sub_info = provider.create(sub_dest, io.BytesIO(b"chow"))
+    provider.rename(sub_info.oid, sub_dest_rename)
+    expected_paths.append(sub_dest_rename)
 
     fold_info = provider.info_path(fold)
     provider.listdir(fold_info.oid)
