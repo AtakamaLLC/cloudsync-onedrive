@@ -91,3 +91,31 @@ def test_url_encoding(provider):
     for ent in ents:
         assert ent.path in expected_paths #nosec
 
+def test_two_step_rename(provider):
+    parent1 = provider.temp_name("base1")
+    parent2 = provider.temp_name("base2")
+    provider.mkdir(parent1)
+    provider.mkdir(parent2)
+
+    base1 = "case"
+    base2 = "CASE"
+    path = parent1 + "/" + base1
+    # Don't do 2 step rename, parent paths don't match
+    one_step = parent2 + "/" + base2
+    # Do 2 step rename, paths match except case of base
+    two_step = parent1 + "/" + base2
+
+    def not_so_random(length):
+        return b'a' * length
+
+    file_info = provider.create(path, io.BytesIO(b"hello"))
+    # Kind of hacky but a call to os.urandom indicates we are doing a 2 step rename
+    with patch("os.urandom", side_effect=not_so_random) as m:
+        provider.rename(file_info.oid, one_step)
+        m.assert_not_called()
+
+    file_info = provider.create(path, io.BytesIO(b"hello"))
+    with patch("os.urandom", side_effect=not_so_random) as m:
+        provider.rename(file_info.oid, two_step)
+        m.assert_called_once()
+

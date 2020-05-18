@@ -817,7 +817,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             try:
                 updated = False
                 if info.name != base:
-                    need_temp = info.name.lower() == base.lower()
+                    need_temp = item.path.lower() == path.lower()
                     if need_temp:
                         new_info.name = base + os.urandom(8).hex()
                         item.update(new_info)
