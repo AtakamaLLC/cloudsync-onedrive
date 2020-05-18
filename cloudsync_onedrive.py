@@ -38,7 +38,7 @@ from cloudsync.utils import debug_sig, memoize
 import quickxorhash
 
 
-__version__ = "0.1.19" # pragma: no cover
+__version__ = "0.1.20" # pragma: no cover
 
 SOCK_TIMEOUT = 180
 
