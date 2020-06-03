@@ -1144,7 +1144,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @namespace_id.setter
     def namespace_id(self, ns_id: str):
-        if self.__drive_to_name.get(ns_id, None):
+        if self.__drive_to_name.get(ns_id, None) or not self.connected:
             self._drive_id = ns_id
         else:
             raise CloudNamespaceError("Unknown namespace ID %s" % ns_id)
