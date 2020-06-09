@@ -350,7 +350,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 drive_id = item["remoteItem"]["parentReference"]["driveId"]
                 path = urllib.parse.unquote_plus(urllib.parse.urlparse(item["webUrl"]).path).split('/')
                 if len(path) == 5:
-                    # support only toplevel folders for now
+                    # path looks something like "/sites/site-name/drive-name/path/to/folder" --
+                    # len=5 ensures we only consider toplevel folders (for now)
                     all_drives[drive_id] = f"shared/{path[2]}/{path[3]}"
             except Exception as e:
                 log.warning("failed to get shared item info: %s", repr(e))
