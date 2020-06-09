@@ -348,7 +348,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     # ignore shared files
                     continue
                 drive_id = item["remoteItem"]["parentReference"]["driveId"]
-                path = urllib.parse.urlparse(item["webUrl"]).path.split('/')
+                path = urllib.parse.unquote_plus(urllib.parse.urlparse(item["webUrl"]).path).split('/')
                 if len(path) == 5:
                     # support only toplevel folders for now
                     all_drives[drive_id] = f"shared/{path[2]}/{path[3]}"
@@ -360,7 +360,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         for site in sites.get("value", []):
             try:
                 # TODO: use configurable regex for filtering?
-                url_path = urllib.parse.urlparse(site["webUrl"]).path.lower()
+                url_path = urllib.parse.unquote_plus(urllib.parse.urlparse(site["webUrl"]).path).lower()
                 if url_path.startswith("/portals/"):
                     continue
 
