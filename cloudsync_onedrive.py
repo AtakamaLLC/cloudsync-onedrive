@@ -340,6 +340,21 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             log.error("failed to get personal drive info: %s", repr(e))
             raise CloudTokenError("Invalid account, or no onedrive access")
 
+        #shared items
+        shared = self._direct_api("get", "/me/drive/sharedWithMe")
+        for item in shared.get("value", []):
+            try:
+                if not "folder" in item:
+                    # ignore shared files
+                    continue
+                drive_id = item["remoteItem"]["parentReference"]["driveId"]
+                path = urllib.parse.urlparse(item["webUrl"]).path.split('/')
+                if len(path) == 5:
+                    # support only toplevel folders for now
+                    all_drives[drive_id] = f"shared/{path[2]}/{path[3]}"
+            except Exception as e:
+                log.warning("failed to get shared item info: %s", repr(e))
+
         # sharepoint drives - a user can have access to multiple sites, with multiple drives in each
         sites = self._direct_api("get", "/sites?search=*")
         for site in sites.get("value", []):

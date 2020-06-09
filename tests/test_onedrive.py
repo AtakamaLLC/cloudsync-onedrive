@@ -1,6 +1,7 @@
 # pylint: disable=protected-access, missing-docstring, line-too-long # noqa: D100
 
 import io
+import json
 import logging
 import re
 from unittest.mock import patch
@@ -47,6 +48,92 @@ class FakeGraphApi(FakeApi):
         if self.multiple_personal_drives:
             return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}, {'id': '31fd31276064ddb', 'name': 'drive-2'}]}
         return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}]}
+
+    @api_route("/me/drive/sharedWithMe")
+    def me_drive_shared_with_me(self, ctx, req):
+        self.called("_set_drive_list", (ctx, req))
+        # TODO: move this to an external file, read it in from there
+        return json.loads("""
+        {
+            "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(driveItem)",
+            "value": [ {
+                "@odata.type": "#microsoft.graph.driveItem",
+                "id": "ITEM_ID_1",
+                "name": "from_team",
+                "webUrl": "https://test_onedrive.sharepoint.com/sites/site-1/documents/from_team",
+                "folder": {"childCount": 0},
+                "remoteItem": {
+                    "id": "ITEM_ID_1",
+                    "name": "from_team",
+                    "webUrl": "https://test_onedrive.sharepoint.com/sites/site-1/documents/from_team",
+                    "folder": {"childCount": 0},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_1",
+                        "driveType": "documentLibrary",
+                        "id": "ITEM_ID_2"
+                    },
+                    "shared": {"scope": "users"}
+                }
+            },
+            {
+                "@odata.type": "#microsoft.graph.driveItem",
+                "id": "ITEM_ID_3",
+                "name": "from_personal",
+                "webUrl": "https://test_onedrive.sharepoint.com/personal/user_co_onmicrosoft_com/Documents/from_personal",
+                "folder": {"childCount": 0},
+                "remoteItem": {
+                    "id": "ITEM_ID_3",
+                    "name": "from_personal",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user_co_onmicrosoft_com/Documents/from_personal",
+                    "folder": {"childCount": 0},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_2",
+                        "driveType": "business",
+                        "id": "ITEM_ID_4"
+                    },
+                    "shared": {"scope": "users"}
+                }
+            },
+            {
+                "@odata.type": "#microsoft.graph.driveItem",
+                "id": "ITEM_ID_30",
+                "name": "inner_folder",
+                "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
+                "folder": {"childCount": 0},
+                "remoteItem": {
+                    "id": "ITEM_ID_30",
+                    "name": "from_personal",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
+                    "folder": {"childCount": 0},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_20",
+                        "driveType": "business",
+                        "id": "ITEM_ID_40"
+                    },
+                    "shared": {"scope": "users"}
+                }
+            },
+            {
+                "@odata.type": "#microsoft.graph.driveItem",
+                "id": "ITEM_ID_5",
+                "name": "some_file",
+                "webUrl": "https://test_onedrive.sharepoint.com/personal/user3_co_onmicrosoft_com/Documents/some_file",
+                "file": {"mimeType": "application/octet-stream"},
+                "remoteItem": {
+                    "id": "ITEM_ID_5",
+                    "name": "some_file",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user3_co_onmicrosoft_com/Documents/some_file",
+                    "file": {"mimeType": "application/octet-stream"},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_7",
+                        "driveType": "business",
+                        "id": "ITEM_ID_4"
+                    },
+                    "shared": {"scope": "users"}
+                }
+            } ]
+        }
+        """)
 
     @api_route("/drives/")
     def default(self, ctx, req):
@@ -160,3 +247,17 @@ def test_namespace_set_other():
     with patch.object(odp, '_direct_api', side_effect=raise_error):
         with pytest.raises(CloudTokenError):
             odp.namespace = "whatever"
+
+def test_list_namespaces():
+    _, odp = fake_odp()
+    namespaces = odp.list_ns()
+    # personal is always there
+    assert "personal" in namespaces
+    # shared folder from a sharepoint site
+    assert "shared/site-1/documents" in namespaces
+    # shared folder from a personal drive (private sharepoint site)
+    assert "shared/user_co_onmicrosoft_com/Documents" in namespaces
+    # shared inner folder (parent is not root) is ignored
+    assert "shared/user2_co_onmicrosoft_com/Documents" not in namespaces
+    # shared file is ignored
+    assert "shared/user3_co_onmicrosoft_com/Documents" not in namespaces
