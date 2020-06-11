@@ -340,7 +340,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 for drive in drives:
                     self._save_drive_info(f"personal/{drive['name']}", drive["id"])
             else:
-                self._save_drive_info(f"personal", drives[0]["id"])
+                self._save_drive_info("personal", drives[0]["id"])
         except CloudDisconnectedError:
             raise
         except Exception as e:
@@ -417,7 +417,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         #                     return drive.id
         # return id
 
-    def list_ns(self, recursive: bool = True, parent: Namespace = None):
+    def list_ns(self, recursive: bool = True, parent: Namespace = None) -> List[Namespace]:
         self._fetch_drive_list()
         if parent:
             site = self.__site_by_id.get(parent.id, None)
