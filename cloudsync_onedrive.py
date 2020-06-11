@@ -17,7 +17,7 @@ import threading
 import asyncio
 import hashlib
 import json
-from typing import Generator, Optional, Dict, Any, Iterable, List, Union, cast, NamedTuple
+from typing import Generator, Optional, Dict, Any, Iterable, List, Union, cast
 import urllib.parse
 import webbrowser
 from base64 import b64encode
@@ -212,14 +212,15 @@ class OneDriveItem():
         return self._sdk_item().content
 
 
-class Site(NamedTuple):
-    id: str
-    name: str
-    drives: List[Namespace] = []
+class Site(Namespace):
+    drives: Optional[List[Namespace]]
     cached: bool = False
 
-    def get_namespace(self):
-        return Namespace(name=self.name, id=self.id, is_parent=True)
+    def __new__(cls, name, site_id, drives=None, cached=False):
+        self = super(Site, cls).__new__(cls, name=name, id=site_id, is_parent=True)
+        self.drives = drives
+        self.cached = cached
+        return self
 
 
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
@@ -365,8 +366,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 # TODO: use configurable regex for filtering?
                 url_path = urllib.parse.unquote_plus(urllib.parse.urlparse(site["webUrl"]).path).lower()
                 if not url_path.startswith("/portals/"):
-                    site = Site(name=site["displayName"], id=site["id"])
-                    self.__site_by_id[site.id] = site
+                    namespace = Site(name=site["displayName"], site_id=site["id"])
+                    self.__site_by_id[namespace.id] = namespace
             except Exception as e:
                 log.warning("failed to get site info: %s", repr(e))
 
@@ -377,7 +378,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 drives = []
                 for drive in site_drives.get("value", []):
                     drives.append(Namespace(name=f"{site.name}/{drive['name']}", id=drive["id"]))
-                site = Site(name=site.name, id=site.id, drives=drives, cached=True)
+                site = Site(name=site.name, site_id=site.id, drives=drives, cached=True)
                 self.__site_by_id[site.id] = site
             except Exception as e:
                 log.warning("failed to get site drive info: %s", repr(e))
@@ -425,7 +426,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if recursive:
                     drives += self._fetch_drives_for_site(site)
                 else:
-                    drives.append(site.get_namespace())
+                    drives.append(site)
             return drives
 
     @memoize
