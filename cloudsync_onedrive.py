@@ -17,10 +17,10 @@ import threading
 import asyncio
 import hashlib
 import json
-from typing import Generator, Optional, Dict, Any, Iterable, List, Union, cast
+from typing import Generator, Optional, Dict, Any, Iterable, List, Union, cast, NamedTuple
 import urllib.parse
 import webbrowser
-from base64 import urlsafe_b64decode, b64encode
+from base64 import b64encode
 import requests
 import arrow
 
@@ -37,8 +37,31 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
+# TODO: import this
+class Namespace(NamedTuple):
+    name: str
+    id: Optional[str]
+    is_parent: bool = False
 
-__version__ = "0.1.20" # pragma: no cover
+class Drive(NamedTuple):
+    id: str
+    name: str
+
+    def get_namespace(self):
+        return Namespace(name=self.name, id=self.id)
+
+class Site(NamedTuple):
+    id: str
+    name: str
+    drives: List[Drive] = []
+    cached: bool = False
+
+    def get_namespace(self):
+        return Namespace(name=self.name, id=self.id, is_parent=True)
+
+
+
+__version__ = "0.1.21" # pragma: no cover
 
 SOCK_TIMEOUT = 180
 
@@ -238,25 +261,13 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self.__test_root: str = None
         self._mutex = threading.RLock()
         self._oauth_config = oauth_config
-        self.__team_id = None
         self._drive_id: str = None
         self._personal_id: str = None
-        self.__cached_drive_to_name: Dict[str, str] = None
-        self.__cached_name_to_drive: Dict[str, str] = None
+        self.__cached_drive_to_name: Dict[str, Drive] = {}
+        self.__cached_name_to_drive: Dict[str, Drive] = {}
+        self.__site_by_id: Dict[str, Site] = {}
         self.__cached_is_biz = None
         self._http = HttpProvider()
-
-    @property
-    def __drive_to_name(self):
-        if self.__cached_drive_to_name is None:
-            self._set_drive_list()
-        return self.__cached_drive_to_name
-
-    @property
-    def __name_to_drive(self):
-        if self.__cached_name_to_drive is None:
-            self._set_drive_list()
-        return self.__cached_name_to_drive
 
     @property
     def connected(self):
@@ -322,25 +333,28 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return res
 
-    def _set_drive_list(self):              # pylint: disable=too-many-branches
-        all_drives: Dict[str, str] = {}
+    def _save_drive_info(self, name, drive_id):
+        drive = Drive(name=name, id=drive_id)
+        self.__cached_drive_to_name[drive_id] = drive
+        self.__cached_name_to_drive[name] = drive
 
+    def _fetch_personal_drives(self):
         # personal drive: "most users will only have a single drive resource" - Microsoft
         # see: https://docs.microsoft.com/en-us/graph/api/drive-list?view=graph-rest-1.0&tabs=http
         try:
             drives = self._direct_api("get", "/me/drives")["value"]
             if len(drives) > 1:
                 for drive in drives:
-                    all_drives[drive["id"]] = f"personal/{drive['name']}"
+                    self._save_drive_info(f"personal/{drive['name']}", drive["id"])
             else:
-                all_drives[drives[0]["id"]] = "personal"
+                self._save_drive_info(f"personal", drive["id"])
         except CloudDisconnectedError:
             raise
         except Exception as e:
             log.error("failed to get personal drive info: %s", repr(e))
             raise CloudTokenError("Invalid account, or no onedrive access")
 
-        #shared items
+    def _fetch_shared_drives(self):
         shared = self._direct_api("get", "/me/drive/sharedWithMe")
         for item in shared.get("value", []):
             try:
@@ -352,31 +366,67 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if len(path) == 5:
                     # path looks something like "/sites/site-name/drive-name/path/to/folder" --
                     # len=5 ensures we only consider toplevel folders (for now)
-                    all_drives[drive_id] = f"shared/{path[2]}/{path[3]}"
+                    self._save_drive_info(f"shared/{path[2]}/{path[3]}", drive_id)
             except Exception as e:
                 log.warning("failed to get shared item info: %s", repr(e))
 
-        # sharepoint drives - a user can have access to multiple sites, with multiple drives in each
+    def _fetch_sites(self):
+        # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
         sites = self._direct_api("get", "/sites?search=*")
         for site in sites.get("value", []):
             try:
                 # TODO: use configurable regex for filtering?
                 url_path = urllib.parse.unquote_plus(urllib.parse.urlparse(site["webUrl"]).path).lower()
-                if url_path.startswith("/portals/"):
-                    continue
-
-                drives = self._direct_api("get", f"/sites/{site['id']}/drives")
-                for drive in drives.get("value", []):
-                    all_drives[drive["id"]] = f"{site['displayName']}/{drive['name']}"
-                # TODO: support subsites
-                # ssites = self._direct_api("get","/sites/%s/sites" % siteid)
-                # log.info("%s SSITES %s", siteid, ssites)
+                if not url_path.startswith("/portals/"):
+                    site = Site(name=site["displayName"], id=site["id"])
+                    self.__site_by_id[site.id] = site
             except Exception as e:
-                log.warning("failed to get sharepoint drive info: %s", repr(e))
+                log.warning("failed to get site info: %s", repr(e))
 
-        log.debug("all drives: %s", all_drives)
-        self.__cached_drive_to_name = all_drives
-        self.__cached_name_to_drive = {v: k for k, v in all_drives.items()}
+    def _fetch_drives_for_site(self, site: Site):
+        if not site.cached:
+            try:
+                site_drives = self._direct_api("get", f"/sites/{site.id}/drives")
+                drives = []
+                for drive in site_drives.get("value", []):
+                    drives.append(Drive(name=f"{site.name}/{drive['name']}", id=drive["id"]))
+                site = Site(name=site.name, id=site.id, drives=drives, cached=True)
+                self.__site_by_id[site.id] = site
+            except Exception as e:
+                log.warning("failed to get site drive info: %s", repr(e))
+        return site.drives
+
+    def _set_drive_list(self):
+        if not self.__cached_drive_to_name:
+            self._fetch_personal_drives()
+            self._fetch_shared_drives()
+            self._fetch_sites()
+
+    @property
+    def __drive_to_name(self):
+        self._set_drive_list()
+        return self.__cached_drive_to_name
+
+    @property
+    def __name_to_drive(self):
+        self._set_drive_list()
+        return self.__cached_name_to_drive
+
+    def list_ns(self, recursive: bool = True, parent: Namespace = None):
+        if parent:
+            site = self.__site_by_id.get(parent.id, None)
+            if not site:
+                log.error("Unknown parent namespace: %s / %s", parent.id, parent.name)
+                raise CloudNamespaceError("Unknown parent namespace")
+            return [drive.get_namespace() for drive in self._fetch_drives_for_site(site)]
+        else:
+            drives = [drive.get_namespace() for _, drive in self.__cached_drive_to_name.items()]
+            for _, site in self.__site_by_id.items():
+                if recursive:
+                    drives += [drive.get_namespace() for drive in self._fetch_drives_for_site(site)]
+                else:
+                    drives.append(site.get_namespace())
+            return drives
 
     @memoize
     def _check_ns(self, nsid, conn_id_for_memo):                                 # pylint: disable=unused-argument
@@ -517,15 +567,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 except Exception as e:
                     log.exception("exception while authenticating: %s", e)
                     raise CloudTokenError(str(e))
-                token = auth_provider.access_token
-                try:
-                    segs = token.split('.')
-                    if len(segs) > 1:
-                        info = json.loads(urlsafe_b64decode(segs[1]+"==="))
-                        self.__team_id = info.get("tid")
-                        log.debug("got team : %s", self.__team_id)
-                except Exception as e:
-                    log.debug("can't parse token, maybe not a team : %s", e)
 
                 new_refresh = auth_provider._session.refresh_token      # pylint: disable=protected-access
                 if new_refresh and new_refresh != refresh_token:
@@ -801,9 +842,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 cbfrom = cbto + 1
                 retries = 0
             return r
-
-    def list_ns(self):
-        return list(n for n in self.__name_to_drive)
 
     def download(self, oid, file_like):
         with self._api() as client:
