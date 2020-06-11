@@ -28,7 +28,7 @@ import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
 from onedrivesdk_fork.http_response import HttpResponse
 
-from cloudsync import Provider, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
+from cloudsync import Provider, Namespace, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
 from cloudsync.exceptions import CloudTokenError, CloudDisconnectedError, CloudFileNotFoundError, \
     CloudFileExistsError, CloudCursorError, CloudTemporaryError, CloudNamespaceError
 from cloudsync.oauth import OAuthConfig, OAuthProviderInfo
@@ -37,11 +37,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-# TODO: import this
-class Namespace(NamedTuple):
-    name: str
-    id: Optional[str]
-    is_parent: bool = False
+__version__ = "0.1.21" # pragma: no cover
 
 class Drive(NamedTuple):
     id: str
@@ -59,9 +55,6 @@ class Site(NamedTuple):
     def get_namespace(self):
         return Namespace(name=self.name, id=self.id, is_parent=True)
 
-
-
-__version__ = "0.1.21" # pragma: no cover
 
 SOCK_TIMEOUT = 180
 
@@ -347,7 +340,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 for drive in drives:
                     self._save_drive_info(f"personal/{drive['name']}", drive["id"])
             else:
-                self._save_drive_info(f"personal", drive["id"])
+                self._save_drive_info(f"personal", drives[0]["id"])
         except CloudDisconnectedError:
             raise
         except Exception as e:
@@ -396,23 +389,36 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 log.warning("failed to get site drive info: %s", repr(e))
         return site.drives
 
-    def _set_drive_list(self):
+    def _fetch_drive_list(self):
         if not self.__cached_drive_to_name:
             self._fetch_personal_drives()
             self._fetch_shared_drives()
             self._fetch_sites()
 
-    @property
-    def __drive_to_name(self):
-        self._set_drive_list()
-        return self.__cached_drive_to_name
+    def _drive_id_to_name(self, drive_id):
+        self._fetch_drive_list()
+        drive = self.__cached_drive_to_name.get(drive_id, None)
+        return drive.name if drive else None
+        # if not drive_name:
+        #     for _, site in self.__site_by_id.items():
+        #         for drive in site.drives():
+        #             if drive.id == drive_id:
+        #                 return drive.name
 
-    @property
-    def __name_to_drive(self):
-        self._set_drive_list()
-        return self.__cached_name_to_drive
+    def _drive_name_to_id(self, name):
+        self._fetch_drive_list()
+        drive = self.__cached_name_to_drive.get(name, None)
+        return drive.id if drive else None
+        # if not drive_id:
+        #     for _, site in self.__site_by_id.items():
+        #         if name.startswith(site.name):
+        #             for drive in self._fetch_drives_for_site(site):
+        #                 if drive.name == name:
+        #                     return drive.id
+        # return id
 
     def list_ns(self, recursive: bool = True, parent: Namespace = None):
+        self._fetch_drive_list()
         if parent:
             site = self.__site_by_id.get(parent.id, None)
             if not site:
@@ -1170,20 +1176,18 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @property                                # type: ignore
     def namespace(self) -> str:              # type: ignore
-        if self._drive_id:
-            return self.__drive_to_name[self._drive_id]
-        return None
+        return self._drive_id_to_name(self._drive_id) if self._drive_id else None
 
     @namespace.setter
     def namespace(self, ns: str):
-        if ns not in self.__name_to_drive:
+        ns_id = self._drive_name_to_id(ns)
+        if not ns_id:
             raise CloudNamespaceError("Unknown namespace %s" % ns)
 
-        if self.__name_to_drive[ns] != self._drive_id:
+        if ns_id != self._drive_id:
             log.debug("namespace changing to %s", ns)
 
-        self.namespace_id = self.__name_to_drive[ns]
-        assert self.namespace == ns
+        self.namespace_id = ns_id
 
     @property
     def _is_biz(self):
