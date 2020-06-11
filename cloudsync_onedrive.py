@@ -39,22 +39,6 @@ import quickxorhash
 
 __version__ = "0.1.21" # pragma: no cover
 
-class Drive(NamedTuple):
-    id: str
-    name: str
-
-    def get_namespace(self):
-        return Namespace(name=self.name, id=self.id)
-
-class Site(NamedTuple):
-    id: str
-    name: str
-    drives: List[Drive] = []
-    cached: bool = False
-
-    def get_namespace(self):
-        return Namespace(name=self.name, id=self.id, is_parent=True)
-
 
 SOCK_TIMEOUT = 180
 
@@ -228,6 +212,16 @@ class OneDriveItem():
         return self._sdk_item().content
 
 
+class Site(NamedTuple):
+    id: str
+    name: str
+    drives: List[Namespace] = []
+    cached: bool = False
+
+    def get_namespace(self):
+        return Namespace(name=self.name, id=self.id, is_parent=True)
+
+
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
     case_sensitive = False
     default_sleep = 15
@@ -256,8 +250,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self._oauth_config = oauth_config
         self._drive_id: str = None
         self._personal_id: str = None
-        self.__cached_drive_to_name: Dict[str, Drive] = {}
-        self.__cached_name_to_drive: Dict[str, Drive] = {}
+        self.__cached_drive_to_name: Dict[str, Namespace] = {}
+        self.__cached_name_to_drive: Dict[str, Namespace] = {}
         self.__site_by_id: Dict[str, Site] = {}
         self.__cached_is_biz = None
         self._http = HttpProvider()
@@ -327,7 +321,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return res
 
     def _save_drive_info(self, name, drive_id):
-        drive = Drive(name=name, id=drive_id)
+        drive = Namespace(name=name, id=drive_id)
         self.__cached_drive_to_name[drive_id] = drive
         self.__cached_name_to_drive[name] = drive
 
@@ -382,7 +376,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 site_drives = self._direct_api("get", f"/sites/{site.id}/drives")
                 drives = []
                 for drive in site_drives.get("value", []):
-                    drives.append(Drive(name=f"{site.name}/{drive['name']}", id=drive["id"]))
+                    drives.append(Namespace(name=f"{site.name}/{drive['name']}", id=drive["id"]))
                 site = Site(name=site.name, id=site.id, drives=drives, cached=True)
                 self.__site_by_id[site.id] = site
             except Exception as e:
@@ -424,12 +418,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             if not site:
                 log.error("Unknown parent namespace: %s / %s", parent.id, parent.name)
                 raise CloudNamespaceError("Unknown parent namespace")
-            return [drive.get_namespace() for drive in self._fetch_drives_for_site(site)]
+            return self._fetch_drives_for_site(site)
         else:
-            drives = [drive.get_namespace() for _, drive in self.__cached_drive_to_name.items()]
+            drives = [drive for _, drive in self.__cached_drive_to_name.items()]
             for _, site in self.__site_by_id.items():
                 if recursive:
-                    drives += [drive.get_namespace() for drive in self._fetch_drives_for_site(site)]
+                    drives += self._fetch_drives_for_site(site)
                 else:
                     drives.append(site.get_namespace())
             return drives
