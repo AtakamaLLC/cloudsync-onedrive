@@ -250,7 +250,7 @@ def test_namespace_set_other():
 
 def test_list_namespaces():
     _, odp = fake_odp()
-    namespaces = odp.list_ns()
+    namespaces = [ns.name for ns in odp.list_ns()]
     # personal is always there
     assert "personal" in namespaces
     # shared folder from a sharepoint site
