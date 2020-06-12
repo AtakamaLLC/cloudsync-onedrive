@@ -1,6 +1,7 @@
 # pylint: disable=protected-access, missing-docstring, line-too-long # noqa: D100
 
 import io
+import json
 import logging
 import re
 from unittest.mock import patch
@@ -8,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from onedrivesdk_fork.error import ErrorCode
-from cloudsync.exceptions import CloudNamespaceError, CloudDisconnectedError, CloudTokenError
+from cloudsync.exceptions import CloudNamespaceError, CloudDisconnectedError, CloudTokenError, CloudFileNotFoundError
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync_onedrive import OneDriveProvider
@@ -43,10 +44,140 @@ class FakeGraphApi(FakeApi):
 
     @api_route("/me/drives")
     def me_drives(self, ctx, req):
-        self.called("_set_drive_list", (ctx, req))
+        self.called("_fetch_personal_drives", (ctx, req))
         if self.multiple_personal_drives:
             return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}, {'id': '31fd31276064ddb', 'name': 'drive-2'}]}
         return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}]}
+
+    @api_route("/me/drive/sharedWithMe")
+    def me_drive_shared_with_me(self, ctx, req):
+        self.called("_fetch_shared_drives", (ctx, req))
+        # TODO: move this to an external file, read it in from there
+        return json.loads("""
+        {
+            "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(driveItem)",
+            "value": [ {
+                "@odata.type": "#microsoft.graph.driveItem",
+                "id": "ITEM_ID_1",
+                "name": "from_team",
+                "webUrl": "https://test_onedrive.sharepoint.com/sites/site-1/documents/from_team",
+                "folder": {"childCount": 0},
+                "remoteItem": {
+                    "id": "ITEM_ID_1",
+                    "name": "from_team",
+                    "webUrl": "https://test_onedrive.sharepoint.com/sites/site-1/documents/from_team",
+                    "folder": {"childCount": 0},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_1",
+                        "driveType": "documentLibrary",
+                        "id": "ITEM_ID_2"
+                    },
+                    "shared": {"scope": "users"}
+                }
+            },
+            {
+                "@odata.type": "#microsoft.graph.driveItem",
+                "id": "ITEM_ID_3",
+                "name": "from_personal",
+                "webUrl": "https://test_onedrive.sharepoint.com/personal/user_co_onmicrosoft_com/Documents/from_personal",
+                "folder": {"childCount": 0},
+                "remoteItem": {
+                    "id": "ITEM_ID_3",
+                    "name": "from_personal",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user_co_onmicrosoft_com/Documents/from_personal",
+                    "folder": {"childCount": 0},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_2",
+                        "driveType": "business",
+                        "id": "ITEM_ID_4"
+                    },
+                    "shared": {"scope": "users"}
+                }
+            },
+            {
+                "@odata.type": "#microsoft.graph.driveItem",
+                "id": "ITEM_ID_30",
+                "name": "inner_folder",
+                "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
+                "folder": {"childCount": 0},
+                "remoteItem": {
+                    "id": "ITEM_ID_30",
+                    "name": "from_personal",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
+                    "folder": {"childCount": 0},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_20",
+                        "driveType": "business",
+                        "id": "ITEM_ID_40"
+                    },
+                    "shared": {"scope": "users"}
+                }
+            },
+            {
+                "@odata.type": "#microsoft.graph.driveItem",
+                "id": "ITEM_ID_5",
+                "name": "some_file",
+                "webUrl": "https://test_onedrive.sharepoint.com/personal/user3_co_onmicrosoft_com/Documents/some_file",
+                "file": {"mimeType": "application/octet-stream"},
+                "remoteItem": {
+                    "id": "ITEM_ID_5",
+                    "name": "some_file",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user3_co_onmicrosoft_com/Documents/some_file",
+                    "file": {"mimeType": "application/octet-stream"},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_7",
+                        "driveType": "business",
+                        "id": "ITEM_ID_4"
+                    },
+                    "shared": {"scope": "users"}
+                }
+            } ]
+        }
+        """)
+
+    @api_route("/sites/")
+    def sites(self, ctx, req):
+        self.called("_fetch_sites", (ctx, req))
+        # TODO: move this to an external file, read it in from there
+        return json.loads("""{
+            "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#sites",
+            "value": [
+            {
+              "createdDateTime": "2019-11-14T23:28:58Z",
+              "id": "xyz.sharepoint.com,ffffffff-ffff-ffff-ffff-acccaeeccccc,aaaaaaaa-bbbb-cccc-dddd-ddddddc00000",
+              "lastModifiedDateTime": "0001-01-01T08:00:00Z",
+              "name": "Community",
+              "webUrl": "https://xyz.sharepoint.com/portals/Community",
+              "displayName": "Community",
+              "root": {},
+              "siteCollection": {
+                "hostname": "xyz.sharepoint.com"
+              }
+            },
+            {
+              "createdDateTime": "2020-04-20T14:11:32Z",
+              "description": "OneDrive cloudsync testing",
+              "id": "xyz.sharepoint.com,ffffffff-ffff-ffff-eeee-acccaeeccccc,aaaaaaaa-bbbb-cccc-eeee-ddddddc00000",
+              "lastModifiedDateTime": "2020-06-11T00:35:07Z",
+              "name": "cloudsync-test-1",
+              "webUrl": "https://xyz.sharepoint.com/sites/cloudsync-test-1",
+              "displayName": "cloudsync-test-1",
+              "root": {},
+              "siteCollection": {
+                "hostname": "xyz.sharepoint.com"
+              }
+            },
+            {
+              "createdDateTime": "2020-06-10T22:48:59Z",
+              "description": "test sub-sites",
+              "id": "xyz.sharepoint.com,ffffffff-7777-ffff-eeee-acccaeeccccc,aaaaaaaa-1111-cccc-eeee-ddddddc00000",
+              "lastModifiedDateTime": "2020-06-10T22:49:03Z",
+              "name": "sub-1",
+              "webUrl": "https://xyz.sharepoint.com/sites/cloudsync-test-1/sub-1",
+              "displayName": "cloudsync-sub-site-1"
+            } ] }
+        """)
+
 
     @api_route("/drives/")
     def default(self, ctx, req):
@@ -160,3 +291,35 @@ def test_namespace_set_other():
     with patch.object(odp, '_direct_api', side_effect=raise_error):
         with pytest.raises(CloudTokenError):
             odp.namespace = "whatever"
+
+def test_list_namespaces():
+    api, odp = fake_odp()
+    namespaces = [ns.name for ns in odp.list_ns(recursive=False)]
+    # personal is always there
+    assert "personal" in namespaces
+    # shared folder from a sharepoint site
+    assert "shared/site-1/documents" in namespaces
+    # shared folder from a personal drive (private sharepoint site)
+    assert "shared/user_co_onmicrosoft_com/Documents" in namespaces
+    # shared inner folder (parent is not root) is ignored
+    assert "shared/user2_co_onmicrosoft_com/Documents" not in namespaces
+    # shared file is ignored
+    assert "shared/user3_co_onmicrosoft_com/Documents" not in namespaces
+    # sites are listed
+    assert "cloudsync-test-1" in namespaces
+    assert "cloudsync-sub-site-1" in namespaces
+    # protals are ignored
+    assert "Community" not in namespaces
+    assert len(api.calls["_fetch_sites"]) == 1
+
+    api2, odp2 = fake_odp()
+    namespaces = [ns.name for ns in odp2.list_ns(recursive=True)]
+    # fetch additional info for 2 sites
+    assert len(api2.calls["_fetch_sites"]) == 3
+
+def test_drive_id_name_translation():
+    _, odp = fake_odp()
+    with pytest.raises(CloudFileNotFoundError):
+        _ = odp._drive_id_to_name("not-an-id")
+    with pytest.raises(CloudNamespaceError):
+        _ = odp._drive_name_to_id("cloudsync-test-1/Documents")
