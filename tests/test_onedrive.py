@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from onedrivesdk_fork.error import ErrorCode
-from cloudsync.exceptions import CloudNamespaceError, CloudDisconnectedError, CloudTokenError
+from cloudsync.exceptions import CloudNamespaceError, CloudDisconnectedError, CloudTokenError, CloudFileNotFoundError
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync_onedrive import OneDriveProvider
@@ -316,3 +316,10 @@ def test_list_namespaces():
     namespaces = [ns.name for ns in odp2.list_ns(recursive=True)]
     # fetch additional info for 2 sites
     assert len(api2.calls["_fetch_sites"]) == 3
+
+def test_drive_id_name_translation():
+    _, odp = fake_odp()
+    with pytest.raises(CloudFileNotFoundError):
+        _ = odp._drive_id_to_name("not-an-id")
+    with pytest.raises(CloudNamespaceError):
+        _ = odp._drive_name_to_id("cloudsync-test-1/Documents")
