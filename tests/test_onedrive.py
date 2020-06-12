@@ -294,7 +294,8 @@ def test_namespace_set_other():
 
 def test_list_namespaces():
     api, odp = fake_odp()
-    namespaces = [ns.name for ns in odp.list_ns(recursive=False)]
+    namespace_objs = odp.list_ns(recursive=False)
+    namespaces = [ns.name for ns in namespace_objs]
     # personal is always there
     assert "personal" in namespaces
     # shared folders - fake namespace
@@ -308,12 +309,22 @@ def test_list_namespaces():
     assert "cloudsync-sub-site-1" in namespaces
     # protals are ignored
     assert "Community" not in namespaces
+    # site fetch done only once
     assert len(api.calls["_fetch_sites"]) == 1
+    # personal has no children
+    child_namespaces = odp.list_ns(parent=namespace_objs[0])
+    assert len(child_namespaces) == 0
+    # shared has 2 children
+    child_namespaces = odp.list_ns(parent=namespace_objs[1])
+    assert len(child_namespaces) == 2
 
+    # recursive
     api2, odp2 = fake_odp()
-    namespaces = [ns.name for ns in odp2.list_ns(recursive=True)]
+    namespaces = odp2.list_ns(recursive=True)
     # fetch additional info for 2 sites
     assert len(api2.calls["_fetch_sites"]) == 3
+
+
 
 def test_drive_id_name_translation():
     _, odp = fake_odp()

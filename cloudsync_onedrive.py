@@ -440,7 +440,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if parent:
             site = self.__site_by_id.get(parent.id, None)
             if not site:
-                log.error("Unknown parent namespace: %s / %s", parent.id, parent.name)
+                log.warning("Unknown parent namespace: %s / %s", parent.id, parent.name)
                 return []
             return self._fetch_drives_for_site(site)
         else:
