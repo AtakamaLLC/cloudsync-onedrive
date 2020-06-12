@@ -253,6 +253,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self._personal_id: str = None
         self.__cached_drive_to_name: Dict[str, Namespace] = {}
         self.__cached_name_to_drive: Dict[str, Namespace] = {}
+        self.__site_drive_by_name: Dict[str, Namespace] = {}
+        self.__site_drive_by_id: Dict[str, Namespace] = {}
         self.__site_by_id: Dict[str, Site] = {}
         self.__cached_is_biz = None
         self._http = HttpProvider()
@@ -325,6 +327,13 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         drive = Namespace(name=name, id=drive_id)
         self.__cached_drive_to_name[drive_id] = drive
         self.__cached_name_to_drive[name] = drive
+        return drive
+
+    def _save_site_drive_info(self, name, drive_id):
+        drive = Namespace(name=name, id=drive_id)
+        self.__site_drive_by_name[drive.name] = drive
+        self.__site_drive_by_id[drive.id] = drive
+        return drive
 
     def _fetch_personal_drives(self):
         # personal drive: "most users will only have a single drive resource" - Microsoft
@@ -376,8 +385,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             try:
                 site_drives = self._direct_api("get", f"/sites/{site.id}/drives")
                 drives = []
-                for drive in site_drives.get("value", []):
-                    drives.append(Namespace(name=f"{site.name}/{drive['name']}", id=drive["id"]))
+                for site_drive in site_drives.get("value", []):
+                    drive = self._save_site_drive_info(f"{site.name}/{site_drive['name']}", site_drive["id"])
+                    drives.append(drive)
                 site = Site(name=site.name, site_id=site.id, drives=drives, cached=True)
                 self.__site_by_id[site.id] = site
             except Exception as e:
@@ -393,24 +403,33 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _drive_id_to_name(self, drive_id):
         self._fetch_drive_list()
         drive = self.__cached_drive_to_name.get(drive_id, None)
-        return drive.name if drive else None
-        # if not drive_name:
-        #     for _, site in self.__site_by_id.items():
-        #         for drive in site.drives():
-        #             if drive.id == drive_id:
-        #                 return drive.name
+        if not drive:
+            drive = self.__site_drive_by_id.get(drive_id, None)
+            if not drive:
+                api_drive = self._direct_api("get", f"/drives/{drive_id}")
+                if api_drive:
+                    drive = self._save_site_drive_info(api_drive.name, drive_id)
+        if not drive:
+            log.error("Failed to find namespace: %s", drive_id)
+            raise CloudNamespaceError("Failed to find namespace")
+        return drive.name
 
     def _drive_name_to_id(self, name):
         self._fetch_drive_list()
         drive = self.__cached_name_to_drive.get(name, None)
-        return drive.id if drive else None
-        # if not drive_id:
-        #     for _, site in self.__site_by_id.items():
-        #         if name.startswith(site.name):
-        #             for drive in self._fetch_drives_for_site(site):
-        #                 if drive.name == name:
-        #                     return drive.id
-        # return id
+        if not drive:
+            drive = self.__site_drive_by_name.get(name, None)
+            if not drive:
+                for _, site in self.__site_by_id.items():
+                    if name.startswith(site.name):
+                        self._fetch_drives_for_site(site)
+                        drive = self.__site_drive_by_name.get(name, None)
+                        if drive:
+                            break
+        if not drive:
+            log.error("Failed to find namespace: %s", name)
+            raise CloudNamespaceError("Failed to find namespace")
+        return drive.id
 
     def list_ns(self, recursive: bool = True, parent: Namespace = None) -> List[Namespace]:
         self._fetch_drive_list()
