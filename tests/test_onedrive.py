@@ -44,14 +44,14 @@ class FakeGraphApi(FakeApi):
 
     @api_route("/me/drives")
     def me_drives(self, ctx, req):
-        self.called("_set_drive_list", (ctx, req))
+        self.called("_fetch_personal_drives", (ctx, req))
         if self.multiple_personal_drives:
             return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}, {'id': '31fd31276064ddb', 'name': 'drive-2'}]}
         return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}]}
 
     @api_route("/me/drive/sharedWithMe")
     def me_drive_shared_with_me(self, ctx, req):
-        self.called("_set_drive_list", (ctx, req))
+        self.called("_fetch_shared_drives", (ctx, req))
         # TODO: move this to an external file, read it in from there
         return json.loads("""
         {
@@ -134,6 +134,50 @@ class FakeGraphApi(FakeApi):
             } ]
         }
         """)
+
+    @api_route("/sites/")
+    def sites(self, ctx, req):
+        self.called("_fetch_sites", (ctx, req))
+        # TODO: move this to an external file, read it in from there
+        return json.loads("""{
+            "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#sites",
+            "value": [
+            {
+              "createdDateTime": "2019-11-14T23:28:58Z",
+              "id": "xyz.sharepoint.com,ffffffff-ffff-ffff-ffff-acccaeeccccc,aaaaaaaa-bbbb-cccc-dddd-ddddddc00000",
+              "lastModifiedDateTime": "0001-01-01T08:00:00Z",
+              "name": "Community",
+              "webUrl": "https://xyz.sharepoint.com/portals/Community",
+              "displayName": "Community",
+              "root": {},
+              "siteCollection": {
+                "hostname": "xyz.sharepoint.com"
+              }
+            },
+            {
+              "createdDateTime": "2020-04-20T14:11:32Z",
+              "description": "OneDrive cloudsync testing",
+              "id": "xyz.sharepoint.com,ffffffff-ffff-ffff-eeee-acccaeeccccc,aaaaaaaa-bbbb-cccc-eeee-ddddddc00000",
+              "lastModifiedDateTime": "2020-06-11T00:35:07Z",
+              "name": "cloudsync-test-1",
+              "webUrl": "https://xyz.sharepoint.com/sites/cloudsync-test-1",
+              "displayName": "cloudsync-test-1",
+              "root": {},
+              "siteCollection": {
+                "hostname": "xyz.sharepoint.com"
+              }
+            },
+            {
+              "createdDateTime": "2020-06-10T22:48:59Z",
+              "description": "test sub-sites",
+              "id": "xyz.sharepoint.com,ffffffff-7777-ffff-eeee-acccaeeccccc,aaaaaaaa-1111-cccc-eeee-ddddddc00000",
+              "lastModifiedDateTime": "2020-06-10T22:49:03Z",
+              "name": "sub-1",
+              "webUrl": "https://xyz.sharepoint.com/sites/cloudsync-test-1/sub-1",
+              "displayName": "cloudsync-sub-site-1"
+            } ] }
+        """)
+
 
     @api_route("/drives/")
     def default(self, ctx, req):
@@ -249,8 +293,8 @@ def test_namespace_set_other():
             odp.namespace = "whatever"
 
 def test_list_namespaces():
-    _, odp = fake_odp()
-    namespaces = [ns.name for ns in odp.list_ns()]
+    api, odp = fake_odp()
+    namespaces = [ns.name for ns in odp.list_ns(recursive=False)]
     # personal is always there
     assert "personal" in namespaces
     # shared folder from a sharepoint site
@@ -261,3 +305,14 @@ def test_list_namespaces():
     assert "shared/user2_co_onmicrosoft_com/Documents" not in namespaces
     # shared file is ignored
     assert "shared/user3_co_onmicrosoft_com/Documents" not in namespaces
+    # sites are listed
+    assert "cloudsync-test-1" in namespaces
+    assert "cloudsync-sub-site-1" in namespaces
+    # protals are ignored
+    assert "Community" not in namespaces
+    assert len(api.calls["_fetch_sites"]) == 1
+
+    api2, odp2 = fake_odp()
+    namespaces = [ns.name for ns in odp2.list_ns(recursive=True)]
+    # fetch additional info for 2 sites
+    assert len(api2.calls["_fetch_sites"]) == 3
