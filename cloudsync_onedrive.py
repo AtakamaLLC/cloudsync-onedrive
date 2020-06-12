@@ -353,6 +353,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _fetch_shared_drives(self):
         shared = self._direct_api("get", "/me/drive/sharedWithMe")
+        drives = []
         for item in shared.get("value", []):
             try:
                 if not "folder" in item:
@@ -363,9 +364,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if len(path) == 5:
                     # path looks something like "/sites/site-name/drive-name/path/to/folder" --
                     # len=5 ensures we only consider toplevel folders (for now)
-                    self._save_drive_info(f"shared/{path[2]}/{path[3]}", drive_id)
+                    drives.append(self._save_site_drive_info(f"shared/{path[2]}/{path[3]}", drive_id))
             except Exception as e:
                 log.warning("failed to get shared item info: %s", repr(e))
+        if drives:
+            namespace = Site(name="shared", site_id="shared", drives=drives, cached=True)
+            self.__site_by_id[namespace.id] = namespace
 
     def _fetch_sites(self):
         # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
@@ -437,7 +441,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             site = self.__site_by_id.get(parent.id, None)
             if not site:
                 log.error("Unknown parent namespace: %s / %s", parent.id, parent.name)
-                raise CloudNamespaceError("Unknown parent namespace")
+                return []
             return self._fetch_drives_for_site(site)
         else:
             drives = [drive for _, drive in self.__cached_drive_to_name.items()]

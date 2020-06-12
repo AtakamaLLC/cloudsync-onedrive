@@ -297,10 +297,8 @@ def test_list_namespaces():
     namespaces = [ns.name for ns in odp.list_ns(recursive=False)]
     # personal is always there
     assert "personal" in namespaces
-    # shared folder from a sharepoint site
-    assert "shared/site-1/documents" in namespaces
-    # shared folder from a personal drive (private sharepoint site)
-    assert "shared/user_co_onmicrosoft_com/Documents" in namespaces
+    # shared folders - fake namespace
+    assert "shared" in namespaces
     # shared inner folder (parent is not root) is ignored
     assert "shared/user2_co_onmicrosoft_com/Documents" not in namespaces
     # shared file is ignored
