@@ -415,7 +415,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self._fetch_drive_list()
         drive = self.__drive_by_id.get(drive_id, None)
         if not drive:
-            api_drive = self._direct_api("get", f"/drives/{drive_id}")
+            api_drive = self._direct_api("get", f"/drives/{drive_id}/")
             if api_drive:
                 drive = self._save_drive_info(api_drive["name"], drive_id)
         if not drive:
