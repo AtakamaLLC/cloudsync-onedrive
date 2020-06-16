@@ -46,8 +46,8 @@ class FakeGraphApi(FakeApi):
     def me_drives(self, ctx, req):
         self.called("_fetch_personal_drives", (ctx, req))
         if self.multiple_personal_drives:
-            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}, {'id': '31fd31276064ddb', 'name': 'drive-2'}]}
-        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}]}
+            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'}, {'id': '31fd31276064ddb', 'driveType': 'business', 'name': 'drive-2'}]}
+        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'}]}
 
     @api_route("/me/drive/sharedWithMe")
     def me_drive_shared_with_me(self, ctx, req):
@@ -220,7 +220,7 @@ def fake_odp():
     with patch.object(OneDriveProvider, "_base_url", base_url):
         prov = fake_oauth_provider(srv, OneDriveProvider)
         assert srv.calls["token"]
-        assert srv.calls["quota"]
+        assert srv.calls["_fetch_personal_drives"]
         # onedrive saves refresh token if creds change
         assert prov._creds["refresh_token"] == NEW_TOKEN
         return srv, prov
