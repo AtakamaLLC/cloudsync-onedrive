@@ -340,6 +340,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     drives.append(self._save_drive_info(f"personal/{drive['name']}", drive["id"]))
             else:
                 drives.append(self._save_drive_info("personal", me_drives[0]["id"]))
+            drives.sort(key=lambda d: d.name.lower())
             self._personal_drive = Site(name="personal", site_id="personal", drives=drives, cached=True)
             self.__cached_is_biz = me_drives[0]["driveType"] != 'personal'
         except CloudDisconnectedError:
@@ -366,12 +367,13 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             except Exception as e:
                 log.warning("failed to get shared item info: %s", repr(e))
         if drives:
+            drives.sort(key=lambda d: d.name.lower())
             self._shared_with_me = Site(name="shared", site_id="shared", drives=drives, cached=True)
 
     def _fetch_sites(self):
         # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
         sites = self._direct_api("get", "/sites?search=*").get("value", [])
-        sites.sort(key=lambda s: s["displayName"])
+        sites.sort(key=lambda s: s["displayName"].lower())
         for site in sites:
             try:
                 # TODO: use configurable regex for filtering?
@@ -386,7 +388,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if not site.cached:
             try:
                 site_drives = self._direct_api("get", f"/sites/{site.id}/drives").get("value", [])
-                site_drives.sort(key=lambda sd: sd["name"])
+                site_drives.sort(key=lambda sd: sd["name"].lower())
                 drives = []
                 for site_drive in site_drives:
                     drive = self._save_drive_info(f"{site.name}/{site_drive['name']}", site_drive["id"])
