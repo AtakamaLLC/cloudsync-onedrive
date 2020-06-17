@@ -12,6 +12,7 @@ from onedrivesdk_fork.error import ErrorCode
 from cloudsync.exceptions import CloudNamespaceError, CloudDisconnectedError, CloudTokenError, CloudFileNotFoundError
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
+from cloudsync.provider import Namespace
 from cloudsync_onedrive import OneDriveProvider
 
 log = logging.getLogger(__name__)
@@ -46,8 +47,8 @@ class FakeGraphApi(FakeApi):
     def me_drives(self, ctx, req):
         self.called("_fetch_personal_drives", (ctx, req))
         if self.multiple_personal_drives:
-            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}, {'id': '31fd31276064ddb', 'name': 'drive-2'}]}
-        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'name': 'personal'}]}
+            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'}, {'id': '31fd31276064ddb', 'driveType': 'business', 'name': 'drive-2'}]}
+        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'}]}
 
     @api_route("/me/drive/sharedWithMe")
     def me_drive_shared_with_me(self, ctx, req):
@@ -144,7 +145,7 @@ class FakeGraphApi(FakeApi):
             "value": [
             {
               "createdDateTime": "2019-11-14T23:28:58Z",
-              "id": "xyz.sharepoint.com,ffffffff-ffff-ffff-ffff-acccaeeccccc,aaaaaaaa-bbbb-cccc-dddd-ddddddc00000",
+              "id": "site-id-1",
               "lastModifiedDateTime": "0001-01-01T08:00:00Z",
               "name": "Community",
               "webUrl": "https://xyz.sharepoint.com/portals/Community",
@@ -157,7 +158,7 @@ class FakeGraphApi(FakeApi):
             {
               "createdDateTime": "2020-04-20T14:11:32Z",
               "description": "OneDrive cloudsync testing",
-              "id": "xyz.sharepoint.com,ffffffff-ffff-ffff-eeee-acccaeeccccc,aaaaaaaa-bbbb-cccc-eeee-ddddddc00000",
+              "id": "site-id-2",
               "lastModifiedDateTime": "2020-06-11T00:35:07Z",
               "name": "cloudsync-test-1",
               "webUrl": "https://xyz.sharepoint.com/sites/cloudsync-test-1",
@@ -188,8 +189,12 @@ class FakeGraphApi(FakeApi):
         if meth == "GET":
             self.called("get", (uri,))
             log.debug("getting")
+
+            if uri.startswith("/drives/item-not-found/"):
+                raise ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": uri}}) 
+
             if re.match(r"^/drives/[^/]+/$", uri):
-                return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity', 'id': 'bdd46067213df13', 'driveType': 'personal', 'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}}, 'quota': {'deleted': 519205504, 'remaining': 1104878758982, 'state': 'normal', 'total': 1104880336896, 'used': 1577914}}
+                return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity', 'id': 'bdd46067213df13', 'name': 'drive-name', 'driveType': 'personal', 'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}}, 'quota': {'deleted': 519205504, 'remaining': 1104878758982, 'state': 'normal', 'total': 1104880336896, 'used': 1577914}}
 
             err = ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": "whatever"}}) 
             log.debug("raising %s", err)
@@ -220,7 +225,7 @@ def fake_odp():
     with patch.object(OneDriveProvider, "_base_url", base_url):
         prov = fake_oauth_provider(srv, OneDriveProvider)
         assert srv.calls["token"]
-        assert srv.calls["quota"]
+        assert srv.calls["_fetch_personal_drives"]
         # onedrive saves refresh token if creds change
         assert prov._creds["refresh_token"] == NEW_TOKEN
         return srv, prov
@@ -294,13 +299,12 @@ def test_namespace_set_other():
 
 def test_list_namespaces():
     api, odp = fake_odp()
-    namespaces = [ns.name for ns in odp.list_ns(recursive=False)]
+    namespace_objs = odp.list_ns(recursive=False)
+    namespaces = [ns.name for ns in namespace_objs]
     # personal is always there
     assert "personal" in namespaces
-    # shared folder from a sharepoint site
-    assert "shared/site-1/documents" in namespaces
-    # shared folder from a personal drive (private sharepoint site)
-    assert "shared/user_co_onmicrosoft_com/Documents" in namespaces
+    # shared folders - fake namespace
+    assert "shared" in namespaces
     # shared inner folder (parent is not root) is ignored
     assert "shared/user2_co_onmicrosoft_com/Documents" not in namespaces
     # shared file is ignored
@@ -310,16 +314,37 @@ def test_list_namespaces():
     assert "cloudsync-sub-site-1" in namespaces
     # protals are ignored
     assert "Community" not in namespaces
+    # site fetch done only once
     assert len(api.calls["_fetch_sites"]) == 1
+    # personal has no children
+    child_namespaces = odp.list_ns(parent=namespace_objs[0])
+    assert len(child_namespaces) == 0
+    # shared has 2 children
+    child_namespaces = odp.list_ns(parent=namespace_objs[1])
+    assert len(child_namespaces) == 2
 
+    # recursive
     api2, odp2 = fake_odp()
-    namespaces = [ns.name for ns in odp2.list_ns(recursive=True)]
+    namespaces = odp2.list_ns(recursive=True)
     # fetch additional info for 2 sites
     assert len(api2.calls["_fetch_sites"]) == 3
+
+    #parent
+    site = Namespace(name="name", id="site-id-1")
+    children = odp2.list_ns(parent=site)
+    assert not children
+    site = Namespace(name="name", id="site-id-2")
+    children = odp2.list_ns(parent=site)
+    assert children
 
 def test_drive_id_name_translation():
     _, odp = fake_odp()
     with pytest.raises(CloudFileNotFoundError):
-        _ = odp._drive_id_to_name("not-an-id")
+        _ = odp._drive_id_to_name("item-not-found")
+    assert odp._drive_id_to_name("blah") == "drive-name"
+
     with pytest.raises(CloudNamespaceError):
-        _ = odp._drive_name_to_id("cloudsync-test-1/Documents")
+        _ = odp._drive_name_to_id("blah")
+    assert odp._drive_name_to_id("cloudsync-test-1/sub-1")
+    odp._fetch_drive_list(clear_cache=True)
+    assert odp._drive_name_to_id("cloudsync-test-1/Community")
