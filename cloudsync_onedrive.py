@@ -37,7 +37,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "0.1.21" # pragma: no cover
+__version__ = "0.1.22" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -544,7 +544,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if not self.__client or creds != self._creds:
             if not creds:
                 raise CloudTokenError("no credentials")
-            log.debug('Connecting to One Drive')
+            log.info('Connecting to One Drive')
             refresh_token = creds.get("refresh", creds.get("refresh_token"))
             if not refresh_token:
                 raise CloudTokenError("no refresh token, refusing connection")
@@ -590,7 +590,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
                 new_refresh = auth_provider._session.refresh_token      # pylint: disable=protected-access
                 if new_refresh and new_refresh != refresh_token:
-                    log.debug("creds have changed")
+                    log.info("creds have changed")
                     creds = {"refresh_token": new_refresh}
                     self._oauth_config.creds_changed(creds)
 
@@ -914,17 +914,17 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                         base, location = self.split(base)
                         parent_item = self.info_path(base, use_cache=False)
                 if not (e.code == "nameAlreadyExists" and info.folder):
-                    log.debug("self not a folder, or not an exists error")
+                    log.info("self not a folder, or not an exists error")
                     raise
 
                 confl = self.info_path(path)
                 if not (confl and confl.otype == DIRECTORY):
-                    log.debug("conflict not a folder")
+                    log.error("conflict not a folder")
                     raise
 
                 try:
                     next(self.listdir(confl.oid))
-                    log.debug("folder is not empty")
+                    log.warning("folder is not empty")
                     raise
                 except StopIteration:
                     pass  # Folder is empty, rename over is ok
@@ -932,7 +932,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if confl.oid == oid:
                     raise
 
-                log.debug("remove conflict out of the way : %s", e)
+                log.info("remove conflict out of the way : %s", e)
                 self.delete(confl.oid)
                 self.rename(oid, path)
 
@@ -1001,7 +1001,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             info = self.info_path(path)
             if info.otype == FILE:
                 raise CloudFileExistsError(path)
-            log.debug("Skipped creating already existing folder: %s", path)
+            log.info("Skipped creating already existing folder: %s", path)
             return info.oid
 
         pid = self._get_parent_id(path=path)
@@ -1023,7 +1023,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             with self._api() as client:
                 item = self._get_item(client, oid=oid).get()
                 if not item:
-                    log.debug("deleted non-existing oid %s", debug_sig(oid))
+                    log.info("deleted non-existing oid %s", debug_sig(oid))
                     return  # file doesn't exist already...
                 info = self._info_item(item)
                 if info.otype == DIRECTORY:
@@ -1163,9 +1163,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 try:
                     item = self._get_item(client, oid=oid).get()
                 except OneDriveError as e:
-                    log.info("info failure %s / %s", e, e.code)
+                    log.error("info failure %s / %s", e, e.code)
                     if e.code == 400:
-                        log.debug("malformed oid %s: %s", oid, e)
+                        log.error("malformed oid %s: %s", oid, e)
                         # malformed oid == not found
                         return None
                     if "invalidclientquery" in str(e.code).lower():
