@@ -117,7 +117,7 @@ def test_two_step_rename(provider):
     file_info = provider.create(path, io.BytesIO(b"hello"))
     with patch("os.urandom", side_effect=not_so_random) as m:
         provider.rename(file_info.oid, two_step)
-        m.assert_called_once()
+        m.assert_called()
 
 def test_delete_non_existent_oid(provider):
     # Ensure this doesn't throw an exception
