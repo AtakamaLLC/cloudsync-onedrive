@@ -1177,7 +1177,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 try:
                     item = self._get_item(client, oid=oid).get()
                 except OneDriveError as e:
-                    log.error("info failure %s / %s", e, e.code)
+                    log.info("info failure %s / %s", e, e.code)
                     if e.code == 400:
                         log.error("malformed oid %s: %s", oid, e)
                         # malformed oid == not found
