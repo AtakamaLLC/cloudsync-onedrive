@@ -23,6 +23,7 @@ import webbrowser
 from base64 import b64encode
 import requests
 import arrow
+import time
 
 import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
@@ -307,6 +308,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         if raw_response:
             return req
+
+        if req.status_code == 202:
+            return {"location": req.headers.get("location", ""), "status_code": 202}
 
         if req.status_code == 204:
             return {}
@@ -900,24 +904,41 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             new_parent_info = self.info_path(parent)
             new_parent_id = new_parent_info.oid
 
-            new_info: onedrivesdk.Item = onedrivesdk.Item()
+            # support copy over an empty folder
+            try:
+                if info.folder:
+                    target_info = self.info_path(path)
+                    if target_info and target_info.otype == DIRECTORY and target_info.oid != oid:
+                        is_empty = True
+                        for _ in self.listdir(target_info.oid):
+                            is_empty = False
+                            break
+                        if is_empty:
+                            self.delete(target_info.oid)
+            except:
+                pass
 
             try:
-                updated = False
+                rename_json = {}
                 if info.name != base:
+                    rename_json["name"] = base
                     need_temp = item.path.lower() == path.lower()
                     if need_temp:
-                        new_info.name = base + os.urandom(8).hex()
-                        item.update(new_info)
-                    new_info.name = base
-                    updated = True
+                        temp_json = {"name": base + os.urandom(8).hex()}
+                        self._direct_api("patch", f"drives/{item.drive_id}/items/{item.oid}", json=temp_json)
                 if old_parent_id != new_parent_info.oid:
-                    new_info.parent_reference = onedrivesdk.ItemReference()
-                    new_info.parent_reference.id = new_parent_id
-                    updated = True
-                if not updated:
+                    rename_json["parentReference"] = {"id": new_parent_id}
+                if not rename_json:
                     return oid
-                item.update(new_info)
+                ret = self._direct_api("patch", f"drives/{item.drive_id}/items/{item.oid}", json=rename_json)
+                if ret.get("status_code", 0) == 202:
+                    # wait for move/copy to complete to get the new oid
+                    for i in range(5):
+                        time.sleep(i)
+                        info = self.info_path(path)
+                        if info:
+                            oid = info.oid
+                            break
             except onedrivesdk.error.OneDriveError as e:
                 if e.code == ErrorCode.InvalidRequest:
                     base, location = self.split(path)
