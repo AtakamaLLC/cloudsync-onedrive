@@ -905,71 +905,39 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             new_parent_id = new_parent_info.oid
 
             # support copy over an empty folder
-            try:
-                if info.folder:
-                    target_info = self.info_path(path)
-                    if target_info and target_info.otype == DIRECTORY and target_info.oid != oid:
-                        is_empty = True
-                        for _ in self.listdir(target_info.oid):
-                            is_empty = False
-                            break
-                        if is_empty:
-                            self.delete(target_info.oid)
-            except:
-                pass
-
-            try:
-                rename_json = {}
-                if info.name != base:
-                    rename_json["name"] = base
-                    need_temp = item.path.lower() == path.lower()
-                    if need_temp:
-                        temp_json = {"name": base + os.urandom(8).hex()}
-                        self._direct_api("patch", f"drives/{item.drive_id}/items/{item.oid}", json=temp_json)
-                if old_parent_id != new_parent_info.oid:
-                    rename_json["parentReference"] = {"id": new_parent_id}
-                if not rename_json:
-                    return oid
-                ret = self._direct_api("patch", f"drives/{item.drive_id}/items/{item.oid}", json=rename_json)
-                if ret.get("status_code", 0) == 202:
-                    # wait for move/copy to complete to get the new oid
-                    for i in range(5):
-                        time.sleep(i)
-                        info = self.info_path(path)
-                        if info:
-                            oid = info.oid
-                            break
-            except onedrivesdk.error.OneDriveError as e:
-                if e.code == ErrorCode.InvalidRequest:
-                    base, location = self.split(path)
-                    parent_item = self.info_path(base, use_cache=False)
-                    while location:
-                        if parent_item and parent_item.otype is OType.FILE:
-                            raise CloudFileExistsError()
-                        base, location = self.split(base)
-                        parent_item = self.info_path(base, use_cache=False)
-                if not (e.code == "nameAlreadyExists" and info.folder):
-                    log.debug("self not a folder, or not an exists error")
-                    raise
-
-                confl = self.info_path(path)
-                if not (confl and confl.otype == DIRECTORY):
-                    log.debug("conflict not a folder")
-                    raise
-
+            if info.folder:
                 try:
-                    next(self.listdir(confl.oid))
-                    log.debug("folder is not empty")
-                    raise
-                except StopIteration:
-                    pass  # Folder is empty, rename over is ok
+                    target_info = self.info_path(path)
+                except CloudFileNotFoundError:
+                    target_info = None
+                if target_info and target_info.otype == DIRECTORY and target_info.oid != oid:
+                    is_empty = True
+                    for _ in self.listdir(target_info.oid):
+                        is_empty = False
+                        break
+                    if is_empty:
+                        self.delete(target_info.oid)
 
-                if confl.oid == oid:
-                    raise
-
-                log.debug("remove conflict out of the way : %s", e)
-                self.delete(confl.oid)
-                self.rename(oid, path)
+            rename_json = {}
+            if info.name != base:
+                rename_json["name"] = base
+                need_temp = item.path.lower() == path.lower()
+                if need_temp:
+                    temp_json = {"name": base + os.urandom(8).hex()}
+                    self._direct_api("patch", f"drives/{item.drive_id}/items/{item.oid}", json=temp_json)
+            if old_parent_id != new_parent_info.oid:
+                rename_json["parentReference"] = {"id": new_parent_id}
+            if not rename_json:
+                return oid
+            ret = self._direct_api("patch", f"drives/{item.drive_id}/items/{item.oid}", json=rename_json)
+            if ret.get("status_code", 0) == 202:
+                # wait for move/copy to complete to get the new oid
+                for i in range(5):
+                    time.sleep(i)
+                    info = self.info_path(path)
+                    if info:
+                        oid = info.oid
+                        break
 
         new_path = self._get_path(oid)
         if self.paths_match(old_path, new_path, for_display=True): # pragma: no cover
