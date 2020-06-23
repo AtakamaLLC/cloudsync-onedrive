@@ -21,9 +21,9 @@ from typing import Generator, Optional, Dict, Any, Iterable, List, Union, cast
 import urllib.parse
 import webbrowser
 from base64 import b64encode
+import time
 import requests
 import arrow
-import time
 
 import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
