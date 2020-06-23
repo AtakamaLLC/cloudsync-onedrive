@@ -38,7 +38,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "1.0.1" # pragma: no cover
+__version__ = "1.0.2" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -932,12 +932,17 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             ret = self._direct_api("patch", f"drives/{item.drive_id}/items/{item.oid}", json=rename_json)
             if ret.get("status_code", 0) == 202:
                 # wait for move/copy to complete to get the new oid
+                new_oid = None
                 for i in range(5):
                     time.sleep(i)
                     info = self.info_path(path)
                     if info:
-                        oid = info.oid
+                        new_oid = info.oid
                         break
+                if not new_oid:
+                    log.error("oid lookup failed after move/copy")
+                    raise CloudFileNotFoundError("oid lookup failed after move/copy")
+                oid = new_oid
 
         new_path = self._get_path(oid)
         if self.paths_match(old_path, new_path, for_display=True): # pragma: no cover
