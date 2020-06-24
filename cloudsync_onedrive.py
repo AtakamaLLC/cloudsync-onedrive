@@ -1031,7 +1031,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             with self._api() as client:
                 item = self._get_item(client, oid=oid).get()
                 if not item:
-                    log.info("deleted non-existing oid %s", debug_sig(oid))
+                    # I don't think this will ever happen...
+                    log.info("deleted non-existing oid %s", debug_sig(oid))  # pragma: no cover
                     return  # file doesn't exist already...
                 info = self._info_item(item)
                 if info.otype == DIRECTORY:
