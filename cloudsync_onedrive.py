@@ -38,7 +38,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "1.0.2" # pragma: no cover
+__version__ = "1.0.3" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -1173,7 +1173,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 except OneDriveError as e:
                     log.info("info failure %s / %s", e, e.code)
                     if e.code == 400:
-                        log.error("malformed oid %s: %s", oid, e)
+                        log.error("malformed oid %s: %s", oid, e)  # pragma: no cover
                         # malformed oid == not found
                         return None
                     if "invalidclientquery" in str(e.code).lower():
