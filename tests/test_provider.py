@@ -119,6 +119,3 @@ def test_two_step_rename(provider):
         provider.rename(file_info.oid, two_step)
         m.assert_called()
 
-def test_delete_non_existent_oid(provider):
-    # Ensure this doesn't throw an exception
-    assert provider.delete("non-existent-oid") is None
