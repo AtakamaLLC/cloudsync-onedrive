@@ -7,7 +7,7 @@ pytest-coverage
 pytest-timeout
 pytest-xdist
 # from pyproject.toml
-cloudsync>=v1.4.15
+cloudsync<v1.6.0
 onedrivesdk_fork
 quickxorhash
 codecov
