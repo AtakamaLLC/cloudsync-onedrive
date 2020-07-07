@@ -143,7 +143,7 @@ class OneDriveItem():
         if path:
             self.__sdk_kws = {"path": path}
 
-        self._drive_id: str = self.__prov.validated_namespace_id
+        self._drive_id: str = self.__prov._validated_namespace_id
         self.__get = None
 
     @property
@@ -627,7 +627,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     @property
     def latest_cursor(self):
         save_cursor = self.__cursor
-        self.__cursor = self._get_url("/drives/%s/root/delta" % self.validated_namespace_id)
+        self.__cursor = self._get_url("/drives/%s/root/delta" % self._validated_namespace_id)
         log.debug("cursor %s", self.__cursor)
         for _ in self.events():
             pass
@@ -1172,12 +1172,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     @property
     def _is_biz(self):
         if self.__cached_is_biz is None:
-            dat = self._direct_api("get", "/drives/%s/" % self.validated_namespace_id)
+            dat = self._direct_api("get", "/drives/%s/" % self._validated_namespace_id)
             self.__cached_is_biz = dat["driveType"] != 'personal'
         return self.__cached_is_biz
 
     @property
-    def validated_namespace_id(self):
+    def _validated_namespace_id(self):
         if self.connected and self.namespace_id:
             return self.namespace_id
         raise CloudNamespaceError("namespace_id has not been validated")
