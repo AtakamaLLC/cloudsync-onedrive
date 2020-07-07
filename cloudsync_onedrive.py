@@ -143,7 +143,7 @@ class OneDriveItem():
         if path:
             self.__sdk_kws = {"path": path}
 
-        self._drive_id: str = self.__prov.namespace_id
+        self._drive_id: str = self.__prov.validated_namespace_id
         self.__get = None
 
     @property
@@ -588,7 +588,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         self._fetch_personal_drives()
         personal_drive_id = self._personal_drive.drives[0].id
-        self.namespace_id = self.namespace_id if self._namespace else personal_drive_id
+        self.namespace_id = self.namespace_id or personal_drive_id
         return personal_drive_id
 
     def _api(self, *args, needs_client=True, **kwargs):  # pylint: disable=arguments-differ
@@ -627,7 +627,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     @property
     def latest_cursor(self):
         save_cursor = self.__cursor
-        self.__cursor = self._get_url("/drives/%s/root/delta" % self.namespace_id)
+        self.__cursor = self._get_url("/drives/%s/root/delta" % self.validated_namespace_id)
         log.debug("cursor %s", self.__cursor)
         for _ in self.events():
             pass
@@ -1172,9 +1172,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     @property
     def _is_biz(self):
         if self.__cached_is_biz is None:
-            dat = self._direct_api("get", "/drives/%s/" % self.namespace_id)
+            dat = self._direct_api("get", "/drives/%s/" % self.validated_namespace_id)
             self.__cached_is_biz = dat["driveType"] != 'personal'
         return self.__cached_is_biz
+
+    @property
+    def validated_namespace_id(self):
+        if self.connected and self.namespace_id:
+            return self.namespace_id
+        raise CloudNamespaceError("namespace_id has not been validated")
 
     @property
     def namespace_id(self) -> Optional[str]:
@@ -1192,11 +1198,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     # Note: name is generic here (e.g., "Documents") because we don't know the parent site
                     drive = self._save_drive_info(api_drive["name"], ns_id)
                 except CloudFileNotFoundError:
-                    pass
-            if not drive:
-                log.error("Failed to find namespace: %s", ns_id)
-                self._namespace = None
-                raise CloudNamespaceError("Failed to find namespace")
+                    self._namespace = None
+                    log.error("Failed to find namespace: %s", ns_id)
+                    raise CloudNamespaceError("Failed to find namespace")
             self._namespace = drive
             log.info("namespace validated")
         else:
