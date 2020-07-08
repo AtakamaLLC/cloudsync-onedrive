@@ -262,40 +262,60 @@ def test_namespace_get():
     nsid = odp.namespace_id
     assert ns
     assert nsid
+    assert ns.id == nsid
+
 
 def test_namespace_set():
     _, odp = fake_odp()
-    odp.namespace = "personal"
-    nsid = odp.namespace_id
-    assert nsid
+
+    personal_id = 'bdd46067213df13'
+    odp.namespace_id = personal_id
+    assert odp.namespace_id == personal_id
+
+    site = Namespace(name="site-id-1", id="site-id-1")
+    odp.namespace = site
+    assert odp.namespace_id == site.id
+
 
 def test_namespace_multiple_personal_drives():
     srv, odp = fake_odp()
     srv.multiple_personal_drives = True
-    odp.namespace = "personal/drive-2"
-    nsid = odp.namespace_id
-    assert nsid
+    odp._fetch_drive_list(clear_cache=True)
+    odp.namespace_id = "31fd31276064ddb"
+    assert odp.namespace.name == "personal/drive-2"
+
 
 def test_namespace_set_err():
     _, odp = fake_odp()
     with pytest.raises(CloudNamespaceError):
-        odp.namespace = "bad-namespace"
+        odp.namespace_id = "item-not-found"
+    with pytest.raises(CloudNamespaceError):
+        odp.namespace = Namespace(name="bad-namespace", id="item-not-found")
+
 
 def test_namespace_set_disconn():
-    _, odp = fake_odp()
+    srv, odp = fake_odp()
     odp.disconnect()
-    with pytest.raises(CloudDisconnectedError):
-        odp.namespace = "whatever"
+    # we do not validate namespaces when disconnected
+    odp.namespace = Namespace(name="whatever", id="whatever")
+    odp.namespace_id = "item-not-found"
+    # but we do validate in connect()
+    with patch.object(OneDriveProvider, "_base_url", srv.uri()):
+        with pytest.raises(CloudNamespaceError):
+            odp.reconnect()
+
 
 def test_namespace_set_other():
     _, odp = fake_odp()
 
-    def raise_error(a, b):
+    def raise_error(_1, _2):
         raise CloudTokenError("yo")
 
     with patch.object(odp, '_direct_api', side_effect=raise_error):
         with pytest.raises(CloudTokenError):
-            odp.namespace = "whatever"
+            odp.namespace = Namespace(name="whatever", id="item-not-found")
+            odp.namespace_id = "item-not-found"
+
 
 def test_list_namespaces():
     api, odp = fake_odp()
@@ -314,8 +334,8 @@ def test_list_namespaces():
     assert "cloudsync-sub-site-1" in namespaces
     # protals are ignored
     assert "Community" not in namespaces
-    # site fetch done only once
-    assert len(api.calls["_fetch_sites"]) == 1
+    # site fetch done once in connect() and again in list_ns()
+    assert len(api.calls["_fetch_sites"]) == 2
     # personal has no children
     child_namespaces = odp.list_ns(parent=namespace_objs[0])
     assert len(child_namespaces) == 0
@@ -327,7 +347,7 @@ def test_list_namespaces():
     api2, odp2 = fake_odp()
     namespaces = odp2.list_ns(recursive=True)
     # fetch additional info for 2 sites
-    assert len(api2.calls["_fetch_sites"]) == 3
+    assert len(api2.calls["_fetch_sites"]) == 4
 
     #parent
     site = Namespace(name="name", id="site-id-1")
@@ -336,15 +356,3 @@ def test_list_namespaces():
     site = Namespace(name="name", id="site-id-2")
     children = odp2.list_ns(parent=site)
     assert children
-
-def test_drive_id_name_translation():
-    _, odp = fake_odp()
-    with pytest.raises(CloudFileNotFoundError):
-        _ = odp._drive_id_to_name("item-not-found")
-    assert odp._drive_id_to_name("blah") == "drive-name"
-
-    with pytest.raises(CloudNamespaceError):
-        _ = odp._drive_name_to_id("blah")
-    assert odp._drive_name_to_id("cloudsync-test-1/sub-1")
-    odp._fetch_drive_list(clear_cache=True)
-    assert odp._drive_name_to_id("cloudsync-test-1/Community")

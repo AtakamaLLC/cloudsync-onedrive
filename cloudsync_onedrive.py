@@ -38,7 +38,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "1.0.3" # pragma: no cover
+__version__ = "2.0.0" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -143,7 +143,7 @@ class OneDriveItem():
         if path:
             self.__sdk_kws = {"path": path}
 
-        self._drive_id: str = self.__prov._drive_id
+        self._drive_id: str = self.__prov._validated_namespace_id
         self.__get = None
 
     @property
@@ -250,11 +250,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self.__test_root: str = None
         self._mutex = threading.RLock()
         self._oauth_config = oauth_config
-        self._drive_id: str = None
-        self._personal_drive: Site = None
-        self._shared_with_me: Site = None
+        self._namespace: Optional[Namespace] = None
+        self._personal_drive: Optional[Site] = None
+        self._shared_with_me: Optional[Site] = None
         self.__done_fetch_drive_list: bool = False
-        self.__drive_by_name: Dict[str, Namespace] = {}
         self.__drive_by_id: Dict[str, Namespace] = {}
         self.__site_by_id: Dict[str, Site] = {}
         self.__cached_is_biz = None
@@ -329,7 +328,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _save_drive_info(self, name, drive_id):
         drive = Namespace(name=name, id=drive_id)
-        self.__drive_by_name[drive.name] = drive
         self.__drive_by_id[drive.id] = drive
         return drive
 
@@ -407,7 +405,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if clear_cache:
             self._personal_drive = None
             self._shared_with_me = None
-            self.__drive_by_name = {}
             self.__drive_by_id = {}
             self.__site_by_id = {}
             self.__done_fetch_drive_list = False
@@ -416,33 +413,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             self._fetch_shared_drives()
             self._fetch_sites()
             self.__done_fetch_drive_list = True
-
-    def _drive_id_to_name(self, drive_id):
-        self._fetch_drive_list()
-        drive = self.__drive_by_id.get(drive_id, None)
-        if not drive:
-            api_drive = self._direct_api("get", f"/drives/{drive_id}/")
-            if api_drive:
-                drive = self._save_drive_info(api_drive["name"], drive_id)
-        if not drive:
-            log.error("Failed to find namespace: %s", drive_id)
-            raise CloudNamespaceError("Failed to find namespace")
-        return drive.name
-
-    def _drive_name_to_id(self, name):
-        self._fetch_drive_list()
-        drive = self.__drive_by_name.get(name, None)
-        if not drive:
-            for _, site in self.__site_by_id.items():
-                if name.startswith(site.name):
-                    self._fetch_drives_for_site(site)
-                    drive = self.__drive_by_name.get(name, None)
-                    if drive:
-                        break
-        if not drive:
-            log.error("Failed to find namespace: %s", name)
-            raise CloudNamespaceError("Failed to find namespace")
-        return drive.id
 
     def list_ns(self, recursive: bool = True, parent: Namespace = None) -> List[Namespace]:
         drives = []
@@ -618,13 +588,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         self._fetch_personal_drives()
         personal_drive_id = self._personal_drive.drives[0].id
-
-        # use requested namespace, or personal if no namespace was previously specified
-        if not self.namespace_id:
-            self.namespace_id = personal_drive_id
-        log.info("USING NS %s", self.namespace_id)
-
-        # personal drive id is used as a unique id that is consistent across connections
+        self.namespace_id = self.namespace_id or personal_drive_id
         return personal_drive_id
 
     def _api(self, *args, needs_client=True, **kwargs):  # pylint: disable=arguments-differ
@@ -663,7 +627,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     @property
     def latest_cursor(self):
         save_cursor = self.__cursor
-        self.__cursor = self._get_url("/drives/%s/root/delta" % self._drive_id)
+        self.__cursor = self._get_url("/drives/%s/root/delta" % self._validated_namespace_id)
         log.debug("cursor %s", self.__cursor)
         for _ in self.events():
             pass
@@ -1197,43 +1161,59 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 h.update(c)
             return h.hexdigest().upper()
 
-    @property                                # type: ignore
-    def namespace(self) -> str:              # type: ignore
-        return self._drive_id_to_name(self._drive_id) if self._drive_id else None
+    @property
+    def namespace(self) -> Optional[Namespace]:
+        return self._namespace
 
     @namespace.setter
-    def namespace(self, ns: str):
-        ns_id = self._drive_name_to_id(ns)
-        if not ns_id:
-            raise CloudNamespaceError("Unknown namespace %s" % ns)
-
-        if ns_id != self._drive_id:
-            log.debug("namespace changing to %s", ns)
-
-        self.namespace_id = ns_id
+    def namespace(self, ns: Namespace):
+        self.namespace_id = ns.id
 
     @property
     def _is_biz(self):
         if self.__cached_is_biz is None:
-            dat = self._direct_api("get", "/drives/%s/" % self._drive_id)
+            dat = self._direct_api("get", "/drives/%s/" % self._validated_namespace_id)
             self.__cached_is_biz = dat["driveType"] != 'personal'
         return self.__cached_is_biz
 
     @property
+    def _validated_namespace_id(self):
+        if self.connected and self.namespace_id:
+            return self.namespace_id
+        raise CloudNamespaceError("namespace_id has not been validated")
+
+    @property
     def namespace_id(self) -> Optional[str]:
-        return self._drive_id
+        return self._namespace.id if self._namespace else None
 
     @namespace_id.setter
     def namespace_id(self, ns_id: str):
-        self._drive_id = ns_id
+        if self.connected:
+            # validate
+            self._fetch_drive_list()
+            drive = self.__drive_by_id.get(ns_id, None)
+            if not drive:
+                try:
+                    api_drive = self._direct_api("get", f"/drives/{ns_id}/")
+                    # Note: name is generic here (e.g., "Documents") because we don't know the parent site
+                    drive = self._save_drive_info(api_drive["name"], ns_id)
+                except CloudFileNotFoundError:
+                    self._namespace = None
+                    log.error("Failed to find namespace: %s", ns_id)
+                    raise CloudNamespaceError("Failed to find namespace")
+            self._namespace = drive
+        else:
+            # defer validation until a connection is established
+            self._namespace = self.__drive_by_id.get(ns_id, Namespace(name=ns_id, id=ns_id))
+        log.info("USING NS name=%s id=%s - connected=%s", self.namespace.name, self.namespace_id, self.connected)
 
     @classmethod
     def test_instance(cls):
         return cls.oauth_test_instance(prefix=cls.name.upper(), port_range=(54200, 54210), host_name="localhost")
 
     @property
-    def _test_namespace(self):
-        return "personal"
+    def _test_namespace(self) -> Namespace:
+        return self._personal_drive.drives[0]
 
 
 class OneDriveBusinessTestProvider(OneDriveProvider):
