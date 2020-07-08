@@ -38,7 +38,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.0.0" # pragma: no cover
+__version__ = "2.0.1" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -1188,19 +1188,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @namespace_id.setter
     def namespace_id(self, ns_id: str):
+        self._namespace = None
         if self.connected:
             # validate
             self._fetch_drive_list()
             drive = self.__drive_by_id.get(ns_id, None)
             if not drive:
-                try:
-                    api_drive = self._direct_api("get", f"/drives/{ns_id}/")
-                    # Note: name is generic here (e.g., "Documents") because we don't know the parent site
-                    drive = self._save_drive_info(api_drive["name"], ns_id)
-                except CloudFileNotFoundError:
-                    self._namespace = None
-                    log.error("Failed to find namespace: %s", ns_id)
-                    raise CloudNamespaceError("Failed to find namespace")
+                # raises CloudNamespaceError if not found
+                api_drive = self._direct_api("get", f"/drives/{ns_id}/")
+                drive = self._save_drive_info(api_drive["name"], ns_id)
             self._namespace = drive
         else:
             # defer validation until a connection is established
