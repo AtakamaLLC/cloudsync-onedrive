@@ -1202,12 +1202,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     log.error("Failed to find namespace: %s", ns_id)
                     raise CloudNamespaceError("Failed to find namespace")
             self._namespace = drive
-            log.info("namespace validated")
         else:
             # defer validation until a connection is established
             self._namespace = self.__drive_by_id.get(ns_id, Namespace(name=ns_id, id=ns_id))
-            log.info("namespace validation deferred")
-        log.info("USING NS name=%s id=%s", self.namespace.name, self.namespace_id)
+        log.info("USING NS name=%s id=%s - connected=%s", self.namespace.name, self.namespace_id, self.connected)
 
     @classmethod
     def test_instance(cls):
