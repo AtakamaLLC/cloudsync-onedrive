@@ -190,6 +190,9 @@ class FakeGraphApi(FakeApi):
             self.called("get", (uri,))
             log.debug("getting")
 
+            if uri.startswith("/drives/namespace-not-found/"):
+                raise ApiError(400, json={"error": {"code": ErrorCode.ItemNotFound, "message": uri}})
+
             if uri.startswith("/drives/item-not-found/"):
                 raise ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": uri}}) 
 
@@ -288,9 +291,9 @@ def test_namespace_multiple_personal_drives():
 def test_namespace_set_err():
     _, odp = fake_odp()
     with pytest.raises(CloudNamespaceError):
-        odp.namespace_id = "item-not-found"
+        odp.namespace_id = "namespace-not-found"
     with pytest.raises(CloudNamespaceError):
-        odp.namespace = Namespace(name="bad-namespace", id="item-not-found")
+        odp.namespace = Namespace(name="bad-namespace", id="namespace-not-found")
 
 
 def test_namespace_set_disconn():
@@ -298,7 +301,7 @@ def test_namespace_set_disconn():
     odp.disconnect()
     # we do not validate namespaces when disconnected
     odp.namespace = Namespace(name="whatever", id="whatever")
-    odp.namespace_id = "item-not-found"
+    odp.namespace_id = "namespace-not-found"
     # but we do validate in connect()
     with patch.object(OneDriveProvider, "_base_url", srv.uri()):
         with pytest.raises(CloudNamespaceError):
