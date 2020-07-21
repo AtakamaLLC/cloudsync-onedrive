@@ -2,7 +2,7 @@
 flit==2.3.0
 pylint==2.5.3
 mypy==0.782
-pytest
+pytest==5.4.3
 pytest-coverage
 pytest-timeout
 pytest-xdist
