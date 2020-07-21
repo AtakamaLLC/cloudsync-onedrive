@@ -1,5 +1,5 @@
 # dev/deploy
-flit
+flit==2.3.0
 pylint
 mypy
 pytest
