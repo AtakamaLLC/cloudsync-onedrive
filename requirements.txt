@@ -8,7 +8,7 @@ pytest-timeout==1.4.2
 pytest-xdist==1.33.0
 # from pyproject.toml
 cloudsync~=2.1.2
-onedrivesdk_fork
+onedrivesdk_fork==1.1.14
 quickxorhash
 codecov
 pylint-requests
