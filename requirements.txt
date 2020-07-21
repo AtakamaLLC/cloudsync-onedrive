@@ -9,6 +9,6 @@ pytest-xdist==1.33.0
 # from pyproject.toml
 cloudsync~=2.1.2
 onedrivesdk_fork==1.1.14
-quickxorhash
+quickxorhash==1.0.4
 codecov
 pylint-requests
