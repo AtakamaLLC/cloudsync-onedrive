@@ -73,7 +73,16 @@ class FakeGraphApi(FakeApi):
                         "driveType": "documentLibrary",
                         "id": "ITEM_ID_2"
                     },
-                    "shared": {"scope": "users"}
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
                 }
             },
             {
@@ -92,7 +101,16 @@ class FakeGraphApi(FakeApi):
                         "driveType": "business",
                         "id": "ITEM_ID_4"
                     },
-                    "shared": {"scope": "users"}
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
                 }
             },
             {
@@ -111,7 +129,16 @@ class FakeGraphApi(FakeApi):
                         "driveType": "business",
                         "id": "ITEM_ID_40"
                     },
-                    "shared": {"scope": "users"}
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
                 }
             },
             {
@@ -130,7 +157,16 @@ class FakeGraphApi(FakeApi):
                         "driveType": "business",
                         "id": "ITEM_ID_4"
                     },
-                    "shared": {"scope": "users"}
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
                 }
             } ]
         }
@@ -284,8 +320,8 @@ def test_namespace_multiple_personal_drives():
     srv, odp = fake_odp()
     srv.multiple_personal_drives = True
     odp._fetch_drive_list(clear_cache=True)
-    odp.namespace_id = "31fd31276064ddb"
-    assert odp.namespace.name == "personal/drive-2"
+    odp.namespace_id = '{"site": "personal", "drive": "31fd31276064ddb"}'
+    assert odp.namespace.name == "Personal/drive-2"
 
 
 def test_namespace_set_err():
@@ -324,14 +360,11 @@ def test_list_namespaces():
     api, odp = fake_odp()
     namespace_objs = odp.list_ns(recursive=False)
     namespaces = [ns.name for ns in namespace_objs]
+    assert len(namespaces) == 4
     # personal is always there
-    assert "personal" in namespaces
+    assert "Personal" in namespaces
     # shared folders - fake namespace
-    assert "shared" in namespaces
-    # shared inner folder (parent is not root) is ignored
-    assert "shared/user2_co_onmicrosoft_com/Documents" not in namespaces
-    # shared file is ignored
-    assert "shared/user3_co_onmicrosoft_com/Documents" not in namespaces
+    assert "Shared" in namespaces
     # sites are listed
     assert "cloudsync-test-1" in namespaces
     assert "cloudsync-sub-site-1" in namespaces
@@ -342,9 +375,9 @@ def test_list_namespaces():
     # personal has no children
     child_namespaces = odp.list_ns(parent=namespace_objs[0])
     assert len(child_namespaces) == 0
-    # shared has 2 children
+    # shared has 3 children (shared file is ignored)
     child_namespaces = odp.list_ns(parent=namespace_objs[1])
-    assert len(child_namespaces) == 2
+    assert len(child_namespaces) == 3
 
     # recursive
     api2, odp2 = fake_odp()
