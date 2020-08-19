@@ -15,7 +15,6 @@ def test_report_info_od(provider):
     pinfo2 = provider.get_quota()
     assert pinfo2['used'] > 0
     assert pinfo2['limit'] > 0
-    assert False
 
 def test_interrupted_file_upload(provider):
     # Should take 3 successful API calls to upload file
