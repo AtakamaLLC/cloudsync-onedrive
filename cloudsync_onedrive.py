@@ -30,7 +30,7 @@ import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
 from onedrivesdk_fork.http_response import HttpResponse
 
-from cloudsync import Provider, NamespaceBase, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
+from cloudsync import Provider, Namespace, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
 from cloudsync.exceptions import CloudTokenError, CloudDisconnectedError, CloudFileNotFoundError, \
     CloudFileExistsError, CloudCursorError, CloudTemporaryError, CloudNamespaceError
 from cloudsync.oauth import OAuthConfig, OAuthProviderInfo
@@ -39,7 +39,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.0.0" # pragma: no cover
+__version__ = "2.1.0" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -215,7 +215,7 @@ class OneDriveItem():
 
 
 @dataclass
-class Drive(NamespaceBase):
+class Drive(Namespace):
     parent: "Optional[Site]" = None
     url: str = ""
     owner: str = ""
@@ -240,7 +240,7 @@ class Drive(NamespaceBase):
 
 
 @dataclass
-class Site(NamespaceBase):
+class Site(Namespace):
     drives: List[Drive] = field(default_factory=list)
 
     @property
@@ -421,7 +421,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if "folder" in item:
                     self._save_shared_with_me_info(item)
             except Exception as e:
-                log.warning("failed to get shared item info: %s %s", repr(e), item)
+                log.warning("failed to get shared item info: %s %s", repr(e), item)  # pragma: no cover
         if self._shared_with_me.drives:
             self._shared_with_me.drives.sort(key=lambda d: d.name.lower())
             self.__site_by_id[self._shared_with_me.id] = self._shared_with_me
@@ -463,8 +463,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             self._fetch_sites()
             self.__done_fetch_drive_list = True
 
-    def list_ns(self, recursive: bool = True, parent: NamespaceBase = None) -> List[NamespaceBase]:
-        namespaces: List[NamespaceBase] = []
+    def list_ns(self, recursive: bool = True, parent: Namespace = None) -> List[Namespace]:
+        namespaces: List[Namespace] = []
         if parent:
             self._fetch_drive_list()
             site = self.__site_by_id.get(parent.id)
@@ -1268,7 +1268,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return cls.oauth_test_instance(prefix=cls.name.upper(), port_range=(54200, 54210), host_name="localhost")
 
     @property
-    def _test_namespace(self) -> NamespaceBase:
+    def _test_namespace(self) -> Namespace:
         return self._personal_drive.drives[0]
 
 

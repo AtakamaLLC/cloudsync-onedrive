@@ -330,6 +330,10 @@ def test_namespace_set_err():
         odp.namespace_id = "namespace-not-found"
     with pytest.raises(CloudNamespaceError):
         odp.namespace = Namespace(name="bad-namespace", id="namespace-not-found")
+    with pytest.raises(CloudNamespaceError):
+        odp.namespace_id = json.dumps({"site": "no-site", "drive": "no-drive"})
+    with pytest.raises(CloudNamespaceError):
+        odp.namespace_id = json.dumps({"site": "site-id-2", "drive": "no-drive"})
 
 
 def test_namespace_set_disconn():
@@ -337,7 +341,9 @@ def test_namespace_set_disconn():
     odp.disconnect()
     # we do not validate namespaces when disconnected
     odp.namespace = Namespace(name="whatever", id="whatever")
+    assert odp.namespace_id == "whatever"
     odp.namespace_id = "namespace-not-found"
+    assert odp.namespace.id == "namespace-not-found"
     # but we do validate in connect()
     with patch.object(OneDriveProvider, "_base_url", srv.uri()):
         with pytest.raises(CloudNamespaceError):
@@ -353,6 +359,7 @@ def test_namespace_set_other():
     with patch.object(odp, '_direct_api', side_effect=raise_error):
         with pytest.raises(CloudTokenError):
             odp.namespace = Namespace(name="whatever", id="item-not-found")
+        with pytest.raises(CloudTokenError):
             odp.namespace_id = "item-not-found"
 
 
@@ -373,11 +380,19 @@ def test_list_namespaces():
     # site fetch done once in connect() and again in list_ns()
     assert len(api.calls["_fetch_sites"]) == 2
     # personal has no children
-    child_namespaces = odp.list_ns(parent=namespace_objs[0])
-    assert len(child_namespaces) == 0
+    personal = namespace_objs[0]
+    assert not personal.is_parent
+    assert not odp.list_ns(parent=personal)
     # shared has 3 children (folders only, shared file is ignored)
+    shared = namespace_objs[1]
+    assert shared.is_parent
     child_namespaces = odp.list_ns(parent=namespace_objs[1])
     assert len(child_namespaces) == 3
+    shared_paths = []
+    for child in child_namespaces:
+        assert child.shared_paths
+        shared_paths += child.shared_paths
+    assert shared_paths == shared.shared_paths
 
     # recursive
     api2, odp2 = fake_odp()
