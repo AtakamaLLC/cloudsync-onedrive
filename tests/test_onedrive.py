@@ -375,7 +375,7 @@ def test_list_namespaces():
     # personal has no children
     child_namespaces = odp.list_ns(parent=namespace_objs[0])
     assert len(child_namespaces) == 0
-    # shared has 3 children (shared file is ignored)
+    # shared has 3 children (folders only, shared file is ignored)
     child_namespaces = odp.list_ns(parent=namespace_objs[1])
     assert len(child_namespaces) == 3
 
@@ -385,7 +385,7 @@ def test_list_namespaces():
     # fetch additional info for 2 sites
     assert len(api2.calls["_fetch_sites"]) == 4
 
-    #parent
+    # parent
     site = Namespace(name="name", id="site-id-1")
     children = odp2.list_ns(parent=site)
     assert not children

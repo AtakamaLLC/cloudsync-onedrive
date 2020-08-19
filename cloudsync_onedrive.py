@@ -290,10 +290,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self._shared_with_me: Site = Site("Shared With Me", "shared")
         self.__done_fetch_drive_list: bool = False
         self.__drive_by_id: Dict[str, Drive] = {}
-        self.__site_by_id: Dict[str, Site] = {
-            self._personal_drive.id: self._personal_drive,
-            self._shared_with_me.id: self._shared_with_me
-        }
+        self.__site_by_id: Dict[str, Site] = {}
         self.__cached_is_biz = None
         self._http = HttpProvider()
 
@@ -370,7 +367,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             "site": parent.id,
             "drive": drive_json["id"]
         })
-        log.info(drive_json)
         owner = (drive_json["owner"].get("user") or drive_json["owner"].get("group", {})) if "owner" in drive_json else {}
         drive = Drive(f'{parent.name}/{drive_json.get("name", "Personal")}', ids,
                       parent=parent,
@@ -409,6 +405,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self._personal_drive.drives[0].name = "Personal"
             else:
                 self._personal_drive.drives.sort(key=lambda d: d.name.lower())
+            self.__site_by_id[self._personal_drive.id] = self._personal_drive
             self.__cached_is_biz = drives[0]["driveType"] != "personal"
         except CloudDisconnectedError:
             raise
@@ -425,7 +422,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     self._save_shared_with_me_info(item)
             except Exception as e:
                 log.warning("failed to get shared item info: %s %s", repr(e), item)
-        self._shared_with_me.drives.sort(key=lambda d: d.name.lower())
+        if self._shared_with_me.drives:
+            self._shared_with_me.drives.sort(key=lambda d: d.name.lower())
+            self.__site_by_id[self._shared_with_me.id] = self._shared_with_me
 
     def _fetch_sites(self):
         # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
@@ -478,8 +477,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             namespaces += self._personal_drive.drives
             for _, site in self.__site_by_id.items():
                 if site == self._personal_drive:
-                    continue
-                if site == self._shared_with_me and not site.drives:
                     continue
                 if recursive:
                     namespaces += self._fetch_drives_for_site(site)
