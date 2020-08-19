@@ -229,7 +229,7 @@ class Drive(NamespaceBase):
 
     def __post_init__(self):
         if self.parent:
-            self.parent.children += [self]
+            self.parent.drives.append(self)
         try:
             ids = json.loads(self.id)
             self.site_id = ids["site"]
@@ -239,18 +239,9 @@ class Drive(NamespaceBase):
             self.drive_id = self.id
 
 
-# @dataclass
-# class SharedDrive(Drive):
-#     paths: List[str] = field(default_factory=list)
-
-#     @property
-#     def shared_paths(self) -> List[str]:
-#         return self.paths
-
-
 @dataclass
 class Site(NamespaceBase):
-    children: List[Drive] = field(default_factory=list)
+    drives: List[Drive] = field(default_factory=list)
 
     @property
     def is_parent(self) -> bool:
@@ -258,12 +249,14 @@ class Site(NamespaceBase):
 
     @property
     def is_cached(self) -> bool:
-        return bool(self.children)
+        return bool(self.drives)
 
-
-# @dataclass 
-# class SharedWithMe(Site):
-#     children: List[SharedDrive] = field(default_factory=list)
+    @property
+    def shared_paths(self) -> List[str]:
+        paths = []
+        for drive in self.drives:
+            paths += drive.shared_paths
+        return paths
 
 
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
@@ -377,11 +370,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             "site": parent.id,
             "drive": drive_json["id"]
         })
+        log.info(drive_json)
         owner = (drive_json["owner"].get("user") or drive_json["owner"].get("group", {})) if "owner" in drive_json else {}
-        drive = Drive(f'{parent.name}/{drive_json.get("name", "personal")}', ids,
-                       parent=parent,
-                       url=drive_json.get("webUrl"),
-                       owner=owner.get("displayName"))
+        drive = Drive(f'{parent.name}/{drive_json.get("name", "Personal")}', ids,
+                      parent=parent,
+                      url=drive_json.get("webUrl"),
+                      owner=owner.get("displayName"))
         self.__drive_by_id[ids] = drive
 
     def _save_shared_with_me_info(self, shared_json):
@@ -411,10 +405,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             drives = self._direct_api("get", "/me/drives")["value"]
             for drive in drives:
                 self._save_drive_info(self._personal_drive, drive)
-            if len(self._personal_drive.children) == 1:
-                self._personal_drive.children[0].name = "Personal"
+            if len(self._personal_drive.drives) == 1:
+                self._personal_drive.drives[0].name = "Personal"
             else:
-                self._personal_drive.children.sort(key=lambda d: d.name.lower())
+                self._personal_drive.drives.sort(key=lambda d: d.name.lower())
             self.__cached_is_biz = drives[0]["driveType"] != "personal"
         except CloudDisconnectedError:
             raise
@@ -431,7 +425,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     self._save_shared_with_me_info(item)
             except Exception as e:
                 log.warning("failed to get shared item info: %s %s", repr(e), item)
-        self._shared_with_me.children.sort(key=lambda d: d.name.lower())
+        self._shared_with_me.drives.sort(key=lambda d: d.name.lower())
 
     def _fetch_sites(self):
         # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
@@ -455,12 +449,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     self._save_drive_info(site, drive)
             except Exception as e:
                 log.warning("failed to get site drive info: %s", repr(e))
-        return site.children
+        return site.drives
 
     def _fetch_drive_list(self, clear_cache: bool = False):
         if clear_cache:
-            self._personal_drive.children = []
-            self._shared_with_me.children = []
+            self._personal_drive.drives = []
+            self._shared_with_me.drives = []
             self.__drive_by_id = {}
             self.__site_by_id = {}
             self.__done_fetch_drive_list = False
@@ -474,20 +468,19 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         namespaces: List[NamespaceBase] = []
         if parent:
             self._fetch_drive_list()
-            if parent.id == self._shared_with_me.id:
-                namespaces += self._shared_with_me.children
+            site = self.__site_by_id.get(parent.id)
+            if site:
+                namespaces += self._fetch_drives_for_site(site)
             else:
-                site = self.__site_by_id.get(parent.id)
-                if site:
-                    namespaces += self._fetch_drives_for_site(site)
-                else:
-                    log.warning("Not a parent namespace: %s / %s", parent.id, parent.name)
+                log.warning("Not a parent namespace: %s / %s", parent.id, parent.name)
         else:
             self._fetch_drive_list(clear_cache=True)
-            namespaces += self._personal_drive.children
-            sites = [self._shared_with_me] if self._shared_with_me.children else []
-            sites += [site for _, site in self.__site_by_id.items()]
-            for site in sites:
+            namespaces += self._personal_drive.drives
+            for _, site in self.__site_by_id.items():
+                if site == self._personal_drive:
+                    continue
+                if site == self._shared_with_me and not site.drives:
+                    continue
                 if recursive:
                     namespaces += self._fetch_drives_for_site(site)
                 else:
@@ -645,8 +638,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self._creds = creds
 
         self._fetch_personal_drives()
-        self.namespace_id = self.namespace_id or self._personal_drive.children[0].id
-        return self._personal_drive.children[0].drive_id
+        self.namespace_id = self.namespace_id or self._personal_drive.drives[0].id
+        return self._personal_drive.drives[0].drive_id
 
     def _api(self, *args, needs_client=True, **kwargs):  # pylint: disable=arguments-differ
         if needs_client and not self.__client:
@@ -1255,18 +1248,18 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if ids.site_id:
                     site = self.__site_by_id.get(ids.site_id)
                     if not site:
-                        raise CloudNamespaceError(f"Unknown site id: {ids}")
+                        raise CloudNamespaceError(f"Unknown site id: {ns_id}")
                     self._fetch_drives_for_site(site)
                     drive = self.__drive_by_id.get(ns_id)
                     if not drive:
-                        raise CloudNamespaceError(f"Site does not contain drive: {ids}")
+                        raise CloudNamespaceError(f"Site does not contain drive: {ns_id}")
                 elif ids.drive_id:
                     api_drive = self._direct_api("get", f"/drives/{ids.drive_id}/")
                     if not api_drive:
-                        raise CloudNamespaceError(f"Unknown drive id: {ids}")
-                    drive = Drive(api_drive["name"], ns_id)
+                        raise CloudNamespaceError(f"Unknown drive id: {ns_id}")
+                    drive = Drive(api_drive.get("name", "Personal"), ns_id)
                 else:
-                    raise CloudNamespaceError(f"Malformed drive id: {ids}")
+                    raise CloudNamespaceError(f"Malformed drive id: {ns_id}")
             self._namespace = drive
         else:
             # defer validation until a connection is established
@@ -1279,7 +1272,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @property
     def _test_namespace(self) -> NamespaceBase:
-        return self._personal_drive.children[0]
+        return self._personal_drive.drives[0]
 
 
 class OneDriveBusinessTestProvider(OneDriveProvider):
