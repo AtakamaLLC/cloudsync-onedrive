@@ -30,7 +30,7 @@ import onedrivesdk_fork as onedrivesdk
 from onedrivesdk_fork.error import OneDriveError, ErrorCode
 from onedrivesdk_fork.http_response import HttpResponse
 
-from cloudsync import Provider, Namespace, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
+from cloudsync import Provider, NamespaceBase, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo, OType
 from cloudsync.exceptions import CloudTokenError, CloudDisconnectedError, CloudFileNotFoundError, \
     CloudFileExistsError, CloudCursorError, CloudTemporaryError, CloudNamespaceError
 from cloudsync.oauth import OAuthConfig, OAuthProviderInfo
@@ -39,7 +39,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.0.1" # pragma: no cover
+__version__ = "3.0.0" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -215,12 +215,17 @@ class OneDriveItem():
 
 
 @dataclass
-class Drive(Namespace):
+class Drive(NamespaceBase):
     parent: "Optional[Site]" = None
     url: str = ""
     owner: str = ""
     site_id: str = field(init=False)
     drive_id: str = field(init=False)
+    paths: List[str] = field(default_factory=list)
+
+    @property
+    def shared_paths(self) -> List[str]:
+        return self.paths
 
     def __post_init__(self):
         if self.parent:
@@ -234,17 +239,17 @@ class Drive(Namespace):
             self.drive_id = self.id
 
 
+# @dataclass
+# class SharedDrive(Drive):
+#     paths: List[str] = field(default_factory=list)
+
+#     @property
+#     def shared_paths(self) -> List[str]:
+#         return self.paths
+
+
 @dataclass
-class SharedDrive(Drive):
-    paths: List[str] = field(default_factory=list)
-
-    @property
-    def shared_paths(self) -> List[str]:
-        return self.paths
-
-
-@dataclass
-class Site(Namespace):
+class Site(NamespaceBase):
     children: List[Drive] = field(default_factory=list)
 
     @property
@@ -256,6 +261,9 @@ class Site(Namespace):
         return bool(self.children)
 
 
+# @dataclass 
+# class SharedWithMe(Site):
+#     children: List[SharedDrive] = field(default_factory=list)
 
 
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
@@ -286,12 +294,16 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self._oauth_config = oauth_config
         self._namespace: Optional[Drive] = None
         self._personal_drive: Site = Site("Personal", "personal")
-        self._shared_with_me: Site = Site("Shared", "shared")
+        self._shared_with_me: Site = Site("Shared With Me", "shared")
         self.__done_fetch_drive_list: bool = False
         self.__drive_by_id: Dict[str, Drive] = {}
-        self.__site_by_id: Dict[str, Site] = {}
+        self.__site_by_id: Dict[str, Site] = {
+            self._personal_drive.id: self._personal_drive,
+            self._shared_with_me.id: self._shared_with_me
+        }
         self.__cached_is_biz = None
         self._http = HttpProvider()
+
 
     @property
     def connected(self):
@@ -377,23 +389,20 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             "site": self._shared_with_me.id,
             "drive": shared_json["remoteItem"]["parentReference"]["driveId"]
         })
-        shared_by = shared_json["remoteItem"]["shared"]["sharedBy"]
-        owner = (shared_by.get("user") or shared_by.get("group", {}))["displayName"]
         url = shared_json["webUrl"]
         split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
-        if split_path[1] == "personal":
-            name = f"{owner}/{split_path[1]}/{split_path[3]}"
-        else:
-            name = f"{owner}/{split_path[2]}/{split_path[3]}"
         drive = self.__drive_by_id.get(ids)
         if not drive:
+            shared_by = shared_json["remoteItem"]["shared"]["sharedBy"]
+            owner = shared_by.get("user") or shared_by.get("group", {})
+            site_name = "personal" if split_path[1] == "personal" else split_path[2]
+            name = f"{owner}/{site_name}/{split_path[3]}"
             drive = Drive(name, ids,
-                           parent=self._shared_with_me,
-                           url=url,
-                           owner=owner)
+                          parent=self._shared_with_me,
+                          url=url,
+                          owner=owner)
             self.__drive_by_id[ids] = drive
-        path = "/" + "/".join(split_path[4:])
-        drive.paths += [path]
+        drive.paths.append("/" + "/".join(split_path[4:]))
 
     def _fetch_personal_drives(self):
         # personal drive: "most users will only have a single drive resource" - Microsoft
@@ -461,8 +470,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             self._fetch_sites()
             self.__done_fetch_drive_list = True
 
-    def list_ns(self, recursive: bool = True, parent: Namespace = None) -> List[Namespace]:
-        namespaces: List[Namespace] = []
+    def list_ns(self, recursive: bool = True, parent: NamespaceBase = None) -> List[NamespaceBase]:
+        namespaces: List[NamespaceBase] = []
         if parent:
             self._fetch_drive_list()
             if parent.id == self._shared_with_me.id:
@@ -1269,7 +1278,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return cls.oauth_test_instance(prefix=cls.name.upper(), port_range=(54200, 54210), host_name="localhost")
 
     @property
-    def _test_namespace(self) -> Namespace:
+    def _test_namespace(self) -> NamespaceBase:
         return self._personal_drive.children[0]
 
 

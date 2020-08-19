@@ -5,6 +5,8 @@ else
 	ENVBIN="bin"
 endif
 
+BASE := $(shell git merge-base HEAD origin/master)
+
 env:
 	virtualenv env
 
@@ -21,3 +23,6 @@ test: requirements
 
 format:
 	autopep8 --in-place -r -j 8 cloudsync/
+
+coverage:
+	diff-cover coverage.xml --compare-branch=$(BASE)

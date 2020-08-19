@@ -364,7 +364,7 @@ def test_list_namespaces():
     # personal is always there
     assert "Personal" in namespaces
     # shared folders - fake namespace
-    assert "Shared" in namespaces
+    assert "Shared With Me" in namespaces
     # sites are listed
     assert "cloudsync-test-1" in namespaces
     assert "cloudsync-sub-site-1" in namespaces
