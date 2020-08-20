@@ -73,7 +73,16 @@ class FakeGraphApi(FakeApi):
                         "driveType": "documentLibrary",
                         "id": "ITEM_ID_2"
                     },
-                    "shared": {"scope": "users"}
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
                 }
             },
             {
@@ -92,7 +101,16 @@ class FakeGraphApi(FakeApi):
                         "driveType": "business",
                         "id": "ITEM_ID_4"
                     },
-                    "shared": {"scope": "users"}
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
                 }
             },
             {
@@ -111,7 +129,16 @@ class FakeGraphApi(FakeApi):
                         "driveType": "business",
                         "id": "ITEM_ID_40"
                     },
-                    "shared": {"scope": "users"}
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
                 }
             },
             {
@@ -130,7 +157,16 @@ class FakeGraphApi(FakeApi):
                         "driveType": "business",
                         "id": "ITEM_ID_4"
                     },
-                    "shared": {"scope": "users"}
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
                 }
             } ]
         }
@@ -273,7 +309,7 @@ def test_namespace_set():
 
     personal_id = 'bdd46067213df13'
     odp.namespace_id = personal_id
-    assert odp.namespace_id == personal_id
+    assert odp.namespace_id == 'personal|bdd46067213df13'
 
     site = Namespace(name="site-id-1", id="site-id-1")
     odp.namespace = site
@@ -284,8 +320,8 @@ def test_namespace_multiple_personal_drives():
     srv, odp = fake_odp()
     srv.multiple_personal_drives = True
     odp._fetch_drive_list(clear_cache=True)
-    odp.namespace_id = "31fd31276064ddb"
-    assert odp.namespace.name == "personal/drive-2"
+    odp.namespace_id = "personal|31fd31276064ddb"
+    assert odp.namespace.name == "Personal/drive-2"
 
 
 def test_namespace_set_err():
@@ -294,6 +330,10 @@ def test_namespace_set_err():
         odp.namespace_id = "namespace-not-found"
     with pytest.raises(CloudNamespaceError):
         odp.namespace = Namespace(name="bad-namespace", id="namespace-not-found")
+    with pytest.raises(CloudNamespaceError):
+        odp.namespace_id = "no-site|no-drive"
+    with pytest.raises(CloudNamespaceError):
+        odp.namespace_id = "site-id-2|no-drive"
 
 
 def test_namespace_set_disconn():
@@ -301,7 +341,9 @@ def test_namespace_set_disconn():
     odp.disconnect()
     # we do not validate namespaces when disconnected
     odp.namespace = Namespace(name="whatever", id="whatever")
+    assert odp.namespace_id == "whatever"
     odp.namespace_id = "namespace-not-found"
+    assert odp.namespace.id == "namespace-not-found"
     # but we do validate in connect()
     with patch.object(OneDriveProvider, "_base_url", srv.uri()):
         with pytest.raises(CloudNamespaceError):
@@ -317,6 +359,7 @@ def test_namespace_set_other():
     with patch.object(odp, '_direct_api', side_effect=raise_error):
         with pytest.raises(CloudTokenError):
             odp.namespace = Namespace(name="whatever", id="item-not-found")
+        with pytest.raises(CloudTokenError):
             odp.namespace_id = "item-not-found"
 
 
@@ -324,14 +367,11 @@ def test_list_namespaces():
     api, odp = fake_odp()
     namespace_objs = odp.list_ns(recursive=False)
     namespaces = [ns.name for ns in namespace_objs]
+    assert len(namespaces) == 4
     # personal is always there
-    assert "personal" in namespaces
+    assert "Personal" in namespaces
     # shared folders - fake namespace
-    assert "shared" in namespaces
-    # shared inner folder (parent is not root) is ignored
-    assert "shared/user2_co_onmicrosoft_com/Documents" not in namespaces
-    # shared file is ignored
-    assert "shared/user3_co_onmicrosoft_com/Documents" not in namespaces
+    assert "Shared With Me" in namespaces
     # sites are listed
     assert "cloudsync-test-1" in namespaces
     assert "cloudsync-sub-site-1" in namespaces
@@ -340,11 +380,19 @@ def test_list_namespaces():
     # site fetch done once in connect() and again in list_ns()
     assert len(api.calls["_fetch_sites"]) == 2
     # personal has no children
-    child_namespaces = odp.list_ns(parent=namespace_objs[0])
-    assert len(child_namespaces) == 0
-    # shared has 2 children
+    personal = namespace_objs[0]
+    assert not personal.is_parent
+    assert not odp.list_ns(parent=personal)
+    # shared has 3 children (folders only, shared file is ignored)
+    shared = namespace_objs[1]
+    assert shared.is_parent
     child_namespaces = odp.list_ns(parent=namespace_objs[1])
-    assert len(child_namespaces) == 2
+    assert len(child_namespaces) == 3
+    shared_paths = []
+    for child in child_namespaces:
+        assert child.shared_paths
+        shared_paths += child.shared_paths
+    assert shared_paths == shared.shared_paths
 
     # recursive
     api2, odp2 = fake_odp()
@@ -352,7 +400,7 @@ def test_list_namespaces():
     # fetch additional info for 2 sites
     assert len(api2.calls["_fetch_sites"]) == 4
 
-    #parent
+    # parent
     site = Namespace(name="name", id="site-id-1")
     children = odp2.list_ns(parent=site)
     assert not children
