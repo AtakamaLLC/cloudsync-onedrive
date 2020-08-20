@@ -230,11 +230,11 @@ class Drive(Namespace):
     def __post_init__(self):
         if self.parent:
             self.parent.drives.append(self)
-        try:
-            ids = json.loads(self.id)
-            self.site_id = ids["site"]
-            self.drive_id = ids["drive"]
-        except json.JSONDecodeError:
+        ids = self.id.split("|")
+        if len(ids) == 2:
+            self.site_id = ids[0]
+            self.drive_id = ids[1]
+        else:
             self.site_id = None
             self.drive_id = self.id
 
@@ -363,10 +363,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return res
 
     def _save_drive_info(self, parent, drive_json):
-        ids = json.dumps({
-            "site": parent.id,
-            "drive": drive_json["id"]
-        })
+        ids = f"{parent.id}|{drive_json['id']}"
         owner = (drive_json["owner"].get("user") or drive_json["owner"].get("group", {})) if "owner" in drive_json else {}
         drive = Drive(f'{parent.name}/{drive_json.get("name", "Personal")}', ids,
                       parent=parent,
@@ -375,22 +372,19 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self.__drive_by_id[ids] = drive
 
     def _save_shared_with_me_info(self, shared_json):
-        ids = json.dumps({
-            "site": self._shared_with_me.id,
-            "drive": shared_json["remoteItem"]["parentReference"]["driveId"]
-        })
+        ids = f"{self._shared_with_me.id}|{shared_json['remoteItem']['parentReference']['driveId']}"
         url = shared_json["webUrl"]
         split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
         drive = self.__drive_by_id.get(ids)
         if not drive:
             shared_by = shared_json["remoteItem"]["shared"]["sharedBy"]
             owner = shared_by.get("user") or shared_by.get("group", {})
-            site_name = "personal" if split_path[1] == "personal" else split_path[2]
+            site_name = "Personal" if split_path[1] == "personal" else split_path[2]
             name = f"{owner}/{site_name}/{split_path[3]}"
             drive = Drive(name, ids,
                           parent=self._shared_with_me,
                           url=url,
-                          owner=owner)
+                          owner=owner.get("displayName"))
             self.__drive_by_id[ids] = drive
         drive.paths.append("/" + "/".join(split_path[4:]))
 
