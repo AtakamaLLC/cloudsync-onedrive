@@ -320,7 +320,7 @@ def test_namespace_multiple_personal_drives():
     srv, odp = fake_odp()
     srv.multiple_personal_drives = True
     odp._fetch_drive_list(clear_cache=True)
-    odp.namespace_id = '{"site": "personal", "drive": "31fd31276064ddb"}'
+    odp.namespace_id = "personal|31fd31276064ddb"
     assert odp.namespace.name == "Personal/drive-2"
 
 
@@ -331,9 +331,9 @@ def test_namespace_set_err():
     with pytest.raises(CloudNamespaceError):
         odp.namespace = Namespace(name="bad-namespace", id="namespace-not-found")
     with pytest.raises(CloudNamespaceError):
-        odp.namespace_id = json.dumps({"site": "no-site", "drive": "no-drive"})
+        odp.namespace_id = "no-site|no-drive"
     with pytest.raises(CloudNamespaceError):
-        odp.namespace_id = json.dumps({"site": "site-id-2", "drive": "no-drive"})
+        odp.namespace_id = "site-id-2|no-drive"
 
 
 def test_namespace_set_disconn():
