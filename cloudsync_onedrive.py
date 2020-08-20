@@ -380,7 +380,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             shared_by = shared_json["remoteItem"]["shared"]["sharedBy"]
             owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
             site_name = "Personal" if split_path[1] == "personal" else split_path[2]
-            name = f"{owner}/{site_name}/{split_path[3]}"
+            name = f"Shared/{owner}/{site_name}/{split_path[3]}"
             drive = Drive(name, ids,
                           parent=self._shared_with_me,
                           url=url,
