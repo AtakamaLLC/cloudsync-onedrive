@@ -309,7 +309,7 @@ def test_namespace_set():
 
     personal_id = 'bdd46067213df13'
     odp.namespace_id = personal_id
-    assert odp.namespace_id == personal_id
+    assert odp.namespace_id == 'personal|bdd46067213df13'
 
     site = Namespace(name="site-id-1", id="site-id-1")
     odp.namespace = site
