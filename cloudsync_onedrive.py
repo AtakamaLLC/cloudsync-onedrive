@@ -39,7 +39,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.1.0" # pragma: no cover
+__version__ = "2.1.1" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -1242,6 +1242,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                         raise CloudNamespaceError(f"Unknown site id: {ns_id}")
                     self._fetch_drives_for_site(site)
                     drive = self.__drive_by_id.get(ns_id)
+                    if not drive:
+                        # check if it is a shared drive
+                        drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
                     if not drive:
                         raise CloudNamespaceError(f"Site does not contain drive: {ns_id}")
                 elif ids.drive_id:
