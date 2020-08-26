@@ -17,6 +17,7 @@ import threading
 import asyncio
 import hashlib
 import json
+import enum
 from typing import Generator, Optional, Dict, Any, Iterable, List, Union, cast
 import urllib.parse
 import webbrowser
@@ -39,10 +40,26 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.1.1" # pragma: no cover
+__version__ = "2.2.0" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
+
+
+class EventFilter(enum.Enum):
+    """
+    Event filter result
+    """
+    PROCESS = "process"
+    IGNORE = "ignore"
+    WALK = "walk"
+
+    def __bool__(self):
+        """
+        Protect against bool use
+        """
+        raise ValueError("never bool enums")
+
 
 class HttpProvider(onedrivesdk.HttpProvider):
     def __init__(self):
@@ -709,7 +726,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         #  'parentReference': {'driveId': '4ab5f266fc495e74', 'driveType': 'personal', 'id': '4AB5F266FC495E74!0', 'path': '/drive/root:'},
         #  'root': {}, 'size': 156, 'webUrl': 'https://onedrive.live.com/?cid=4ab5f266fc495e74'}
         if change['parentReference'].get('id') is None:
-            # this is an event on the root folder... ignore it
+            log.debug("ignore event: drive root")
             return None
 
         ts = arrow.get(change.get('lastModifiedDateTime')).float_timestamp
@@ -737,6 +754,39 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return Event(otype, oid, path, ohash, exists, ts, new_cursor=new_cursor)
 
+    def _filter_event(self, event: Event) -> EventFilter:
+        # event filtering based on root path and event path
+
+        if not event:
+            return EventFilter.IGNORE
+
+        if not self._root_path:
+            return EventFilter.PROCESS
+
+        state_path = self.sync_state.get_path(event.oid)
+        prior_subpath = self.is_subpath_of_root(state_path)
+        if not event.exists:
+            # delete - ignore if not in state, or in state but is not subpath of root
+            return EventFilter.PROCESS if prior_subpath else EventFilter.IGNORE
+
+        if event.path:
+            curr_subpath = self.is_subpath_of_root(event.path)
+            if curr_subpath and not prior_subpath:
+                # rename into root
+                log.debug("renamed into root: %s", event.path)
+                if event.otype == DIRECTORY:
+                    return EventFilter.WALK
+            elif prior_subpath and not curr_subpath:
+                # rename out of root
+                log.debug("renamed out of root: %s", event.path)
+            else:
+                # both curr and prior are subpaths == rename within root (process event)
+                # neither is subpath == rename outside root (ignore event)
+                return EventFilter.PROCESS if curr_subpath else EventFilter.IGNORE
+
+        return EventFilter.PROCESS
+
+
     def events(self) -> Generator[Event, None, None]:      # pylint: disable=too-many-locals, too-many-branches
         page_token = self.current_cursor
         assert page_token
@@ -757,10 +807,18 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             for change in events:
                 event = self._convert_to_event(change, new_cursor)
                 log.debug("converted event %s as %s", change, event)
-                if event is not None:
-                    yield event
-                else:
-                    log.debug("Ignoring event")
+                filter_result = self._filter_event(event)
+                if filter_result == EventFilter.IGNORE:
+                    if event:
+                        log.debug("ignore event: %s %s %s", event.path, event.oid, event.exists)
+                    continue
+                if filter_result == EventFilter.WALK:
+                    log.debug("directory renamed into root - walking: %s", event.path)
+                    try:
+                        yield from self.walk_oid(event.oid)
+                    except CloudFileNotFoundError:
+                        pass
+                yield event
 
             if new_cursor and page_token and new_cursor != page_token:
                 self.__cursor = new_cursor
