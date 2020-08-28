@@ -9,11 +9,12 @@ from unittest.mock import patch
 import pytest
 
 from onedrivesdk_fork.error import ErrorCode
-from cloudsync.exceptions import CloudNamespaceError, CloudDisconnectedError, CloudTokenError, CloudFileNotFoundError
+from cloudsync.exceptions import CloudNamespaceError, CloudTokenError
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
-from cloudsync.provider import Namespace
-from cloudsync_onedrive import OneDriveProvider
+from cloudsync.provider import Namespace, Event
+from cloudsync.sync.state import FILE, DIRECTORY
+from cloudsync_onedrive import OneDriveProvider, EventFilter
 
 log = logging.getLogger(__name__)
 
@@ -293,6 +294,53 @@ def test_root_event():
 
     assert odp._convert_to_event(root_event, "123") is None
     assert odp._convert_to_event(non_root_event, "123") is not None
+
+
+def test_event_filter():
+    _, odp = fake_odp()
+
+    # root not set
+    assert not odp.root_path
+    event = Event(FILE, "", "", "", True)
+    assert odp._filter_event(event) == EventFilter.PROCESS
+    event = Event(DIRECTORY, "", "", "", False)
+    assert odp._filter_event(event) == EventFilter.PROCESS
+    assert odp._filter_event(None) == EventFilter.IGNORE
+
+    class MockSyncState:
+        def get_path(self, oid):
+            if oid == "in-root":
+                return "/root/path"
+            elif oid == "out-root":
+                return "/path"
+            else:
+                return None
+
+    # root set
+    odp._root_oid = "root_oid"
+    odp._root_path = "/root"
+    odp.sync_state = MockSyncState()
+
+    e = Event(FILE, "", "", "", False)
+    assert odp._filter_event(e) == EventFilter.IGNORE
+    e = Event(FILE, "in-root", "/root/path2", "hash", True)
+    assert odp._filter_event(e) == EventFilter.PROCESS
+    e = Event(FILE, "in-root", None, None, False)
+    assert odp._filter_event(e) == EventFilter.PROCESS
+    e = Event(FILE, "out-root", "/path2", "hash", True)
+    assert odp._filter_event(e) == EventFilter.IGNORE
+    e = Event(FILE, "out-root", None, None, False)
+    assert odp._filter_event(e) == EventFilter.IGNORE
+    e = Event(FILE, "in-root", "/path2", "hash", True)
+    assert odp._filter_event(e) == EventFilter.PROCESS
+    e = Event(FILE, "out-root", "/root/path2", "hash", True)
+    assert odp._filter_event(e) == EventFilter.PROCESS
+    e = Event(DIRECTORY, "out-root", "/root/path2", "hash", True)
+    assert odp._filter_event(e) == EventFilter.WALK
+
+    with pytest.raises(ValueError):
+        if odp._filter_event(e):
+            log.info("this should throw")
 
 
 def test_namespace_get():
