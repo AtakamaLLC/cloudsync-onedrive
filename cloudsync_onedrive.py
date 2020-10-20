@@ -1020,6 +1020,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return oid
 
+
+    def _parse_time(self, time_str):
+        try:
+            ret_val = arrow.get(time_str).timestamp
+        except Exception as e:
+            log.error("could not convert time string '%s' to timestamp: %s" % (time_str, e))
+            ret_val = 0
+        return ret_val
+
     def _info_from_rest(self, item, root=None):
         name = item["name"]
         if root:
@@ -1040,6 +1049,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         name = item["name"]
         size = item["size"]
         mtime = item["lastModifiedDateTime"]
+        mtime = mtime and self._parse_time(mtime)
         shared = False
         if "createdBy" in item:
             shared = bool(item.get("remoteItem"))
@@ -1155,8 +1165,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if path is None:
             path = odi.path
 
+        mtime = item.last_modified_date_time
+        mtime = mtime and self._parse_time(mtime)
+
         return OneDriveInfo(oid=odi.oid, otype=otype, hash=ohash, path=odi.path, pid=odi.pid, name=item.name,
-                            mtime=item.last_modified_date_time, shared=item.shared)
+                            mtime=mtime, shared=item.shared, size=item.size)
 
     def exists_path(self, path) -> bool:
         try:
