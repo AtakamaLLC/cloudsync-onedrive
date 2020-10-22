@@ -1021,11 +1021,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return oid
 
 
-    def _parse_time(self, time_str):
+    @staticmethod
+    def _parse_time(time_str):
         try:
             ret_val = arrow.get(time_str).timestamp
         except Exception as e:
-            log.error("could not convert time string '%s' to timestamp: %s" % (time_str, e))
+            log.error("could not convert time string '%s' to timestamp: %s", time_str, e)
             ret_val = 0
         return ret_val
 
