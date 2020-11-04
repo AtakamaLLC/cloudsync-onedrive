@@ -271,6 +271,15 @@ def fake_odp():
         return srv, prov
 
 
+def test_latest_cursor():
+    _, odp = fake_odp()
+    with patch.object(odp, "events") as events:
+        with patch.object(odp, "_direct_api") as direct:
+            odp.latest_cursor
+            events.assert_not_called()
+            direct.assert_called_once()
+
+
 def test_upload():
     srv, odp = fake_odp()
     odp.create("/small", io.BytesIO())
