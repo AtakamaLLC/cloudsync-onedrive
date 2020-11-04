@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.2.0" # pragma: no cover
+__version__ = "2.2.1" # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -684,14 +684,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @property
     def latest_cursor(self):
-        save_cursor = self.__cursor
-        self.__cursor = self._get_url("/drives/%s/root/delta" % self._validated_namespace_id)
-        log.debug("cursor %s", self.__cursor)
-        for _ in self.events():
-            pass
-        retval = self.__cursor
-        self.__cursor = save_cursor
-        return retval
+        # see: https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_delta?view=odsp-graph-online#parameters
+        res = self._direct_api("get", f"/drives/{self._validated_namespace_id}/root/delta?token=latest")
+        return res.get('@odata.deltaLink')
 
     @property
     def current_cursor(self):
