@@ -49,7 +49,7 @@ class FakeGraphApi(FakeApi):
         self.called("_fetch_personal_drives", (ctx, req))
         if self.multiple_personal_drives:
             return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'}, {'id': '31fd31276064ddb', 'driveType': 'business', 'name': 'drive-2'}]}
-        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'}]}
+        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal', 'owner': {'user': {'displayName': 'owner-name', 'id': 'owner-id'}}}]}
 
     @api_route("/me/drive/sharedWithMe")
     def me_drive_shared_with_me(self, ctx, req):
@@ -359,6 +359,9 @@ def test_namespace_get():
     assert ns
     assert nsid
     assert ns.id == nsid
+    assert ns.owner == "owner-name"
+    assert ns.owner_id == "owner-id"
+    assert ns.owner_type == "user"
 
 
 def test_namespace_set():
