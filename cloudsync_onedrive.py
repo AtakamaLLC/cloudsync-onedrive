@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.2.1" # pragma: no cover
+__version__ = "2.2.2"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -236,6 +236,8 @@ class Drive(Namespace):
     parent: "Optional[Site]" = None
     url: str = ""
     owner: str = ""
+    owner_type: str = ""
+    owner_id: str = ""
     site_id: str = field(init=False)
     drive_id: str = field(init=False)
     paths: List[str] = field(default_factory=list)
@@ -381,11 +383,16 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _save_drive_info(self, parent, drive_json):
         ids = f"{parent.id}|{drive_json['id']}"
-        owner = (drive_json["owner"].get("user") or drive_json["owner"].get("group", {})) if "owner" in drive_json else {}
+        owner = drive_json.get("owner")
+        owner_type = list(owner)[0] if owner else ""
+        owner_id = owner[owner_type].get("id", "") if owner else ""
+        owner_name = owner[owner_type].get("displayName", "") if owner else ""
         drive = Drive(f'{parent.name}/{drive_json.get("name", "Personal")}', ids,
                       parent=parent,
                       url=drive_json.get("webUrl"),
-                      owner=owner.get("displayName"))
+                      owner=owner_name,
+                      owner_id=owner_id,
+                      owner_type=owner_type)
         self.__drive_by_id[ids] = drive
 
     def _save_shared_with_me_info(self, shared_json):
@@ -566,23 +573,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return False
 
     def get_quota(self):
-        dat = self._direct_api("get", "/me/drive/")
+        dat = self._direct_api("get", f"/drives/{self.namespace.drive_id}")
         self.__cached_is_biz = dat["driveType"] != 'personal'
-
         log.debug("my drive %s", dat)
-
-        display_name = dat["owner"].get("user", {}).get("displayName")
-        if not display_name:
-            display_name = dat["owner"].get("group", {}).get("displayName")
-
-        res = {
+        return {
             'used': dat["quota"]["total"]-dat["quota"]["remaining"],
             'limit': dat["quota"]["total"],
-            'login': display_name,
+            'login': self.namespace.owner,
             'drive_id': dat['id'],                # drive id
         }
-
-        return res
 
     def reconnect(self):
         self.connect(self._creds)
