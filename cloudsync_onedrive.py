@@ -579,7 +579,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return {
             'used': dat["quota"]["total"]-dat["quota"]["remaining"],
             'limit': dat["quota"]["total"],
-            'login': self.namespace.owner,
+            'login': self._personal_drive.drives[0].owner,
             'drive_id': dat['id'],                # drive id
         }
 
