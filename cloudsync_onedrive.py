@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.2.2"  # pragma: no cover
+__version__ = "2.2.3"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -579,7 +579,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return {
             'used': dat["quota"]["total"]-dat["quota"]["remaining"],
             'limit': dat["quota"]["total"],
-            'login': self.namespace.owner,
+            'login': self._personal_drive.drives[0].owner,
             'drive_id': dat['id'],                # drive id
         }
 

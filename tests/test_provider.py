@@ -11,10 +11,13 @@ test_report_info = None
 def test_report_info_od(provider):
     temp_name = provider.temp_name()
     before = provider.get_quota()["used"]
-    provider.create(temp_name, io.BytesIO(b"test" * 1000))
-    pinfo2 = provider.get_quota()
-    assert pinfo2['used'] > before
-    assert pinfo2['limit'] > 0
+    provider.create(temp_name, io.BytesIO(b"test" * 100000))
+    with patch.object(provider.prov._personal_drive.drives[0], "owner", "personal-drive-owner"):
+        pinfo2 = provider.get_quota()
+        assert pinfo2['used'] > before
+        assert pinfo2['limit'] > 0
+        assert pinfo2['login'] == "personal-drive-owner"
+
 
 def test_interrupted_file_upload(provider):
     # Should take 3 successful API calls to upload file
