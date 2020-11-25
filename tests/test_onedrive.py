@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from onedrivesdk_fork.error import ErrorCode
-from cloudsync.exceptions import CloudNamespaceError, CloudTokenError
+from cloudsync.exceptions import CloudNamespaceError, CloudTokenError, CloudFileNotFoundError
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
@@ -471,3 +471,27 @@ def test_list_namespaces():
     site = Namespace(name="name", id="site-id-2")
     children = odp2.list_ns(parent=site)
     assert children
+
+
+def test_walk_filtered_directory():
+    api, odp = fake_odp()
+    history = set()
+    with patch.object(odp, "walk_oid", return_value=[]) as walk:
+        for _ in odp._walk_filtered_directory("oid1", history):
+            pass
+        for _ in odp._walk_filtered_directory("oid1", history):
+            pass
+        walk.assert_called_once_with("oid1", recursive=False)
+
+        walk.reset_mock()
+        for _ in odp._walk_filtered_directory("oid2", history):
+            pass
+        walk.assert_called_once_with("oid2", recursive=False)
+
+    def cloud_fnf_error(oid, recursive=True):
+        raise CloudFileNotFoundError(f"{oid}-{recursive}")
+
+    with patch.object(odp, "walk_oid", cloud_fnf_error):
+        # should not raise
+        for _ in odp._walk_filtered_directory("oid3", history):
+            pass

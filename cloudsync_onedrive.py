@@ -786,11 +786,22 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return EventFilter.PROCESS
 
+    def _walk_filtered_directory(self, oid, history):
+        if oid not in history:
+            history.add(oid)
+            try:
+                for event in self.walk_oid(oid, recursive=False):
+                    if event.otype == DIRECTORY:
+                        yield from self._walk_filtered_directory(event.oid, history)
+                    yield event
+            except CloudFileNotFoundError:
+                pass
 
     def events(self) -> Generator[Event, None, None]:      # pylint: disable=too-many-locals, too-many-branches
         page_token = self.current_cursor
         assert page_token
         done = False
+        walk_history = set()
 
         while not done:
             # log.debug("looking for events, timeout: %s", timeout)
@@ -806,18 +817,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             for change in events:
                 event = self._convert_to_event(change, new_cursor)
-                log.debug("converted event %s as %s", change, event)
                 filter_result = self._filter_event(event)
                 if filter_result == EventFilter.IGNORE:
-                    if event:
-                        log.debug("ignore event: %s %s %s", event.path, event.oid, event.exists)
                     continue
-                if filter_result == EventFilter.WALK:
+                if filter_result == EventFilter.WALK and event.otype == DIRECTORY:
                     log.debug("directory created in or renamed into root - walking: %s", event.path)
-                    try:
-                        yield from self.walk_oid(event.oid)
-                    except CloudFileNotFoundError:
-                        pass
+                    yield from self._walk_filtered_directory(event, walk_history)
                 yield event
 
             if new_cursor and page_token and new_cursor != page_token:
