@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import typing
-from unittest.mock import patch
+from unittest.mock import patch, call
 
 import pytest
 
@@ -477,7 +477,8 @@ def test_list_namespaces():
 def test_walk_filtered_directory():
     api, odp = fake_odp()
     history: typing.Set[str] = set()
-    with patch.object(odp, "walk_oid", return_value=[]) as walk:
+    event_file = Event(FILE, "oid7", "", "", True)
+    with patch.object(odp, "walk_oid", return_value=[event_file]) as walk:
         for _ in odp._walk_filtered_directory("oid1", history):
             pass
         for _ in odp._walk_filtered_directory("oid1", history):
@@ -489,10 +490,16 @@ def test_walk_filtered_directory():
             pass
         walk.assert_called_once_with("oid2", recursive=False)
 
-    def cloud_fnf_error(oid, recursive=True):
-        raise CloudFileNotFoundError(f"{oid}-{recursive}")
-
-    with patch.object(odp, "walk_oid", cloud_fnf_error):
-        # should not raise
+    event_dir = Event(DIRECTORY, "oid8", "", "", True)
+    with patch.object(odp, "walk_oid", return_value=[event_dir]) as walk:
         for _ in odp._walk_filtered_directory("oid3", history):
             pass
+        walk.assert_has_calls([call("oid3", recursive=False), call("oid8", recursive=False)])
+
+        def cloud_fnf_error(oid, recursive=True):
+            raise CloudFileNotFoundError(f"{oid}-{recursive}")
+
+        with patch.object(odp, "walk_oid", cloud_fnf_error):
+            # should not raise
+            for _ in odp._walk_filtered_directory("oid4", history):
+                pass
