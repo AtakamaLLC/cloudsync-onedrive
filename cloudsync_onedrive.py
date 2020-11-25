@@ -18,7 +18,7 @@ import asyncio
 import hashlib
 import json
 import enum
-from typing import Generator, Optional, Dict, Any, Iterable, List, Union, cast
+from typing import Generator, Optional, Dict, Any, Iterable, List, Set, Union, cast
 import urllib.parse
 import webbrowser
 from base64 import b64encode
@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.2.3"  # pragma: no cover
+__version__ = "2.2.4"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -786,7 +786,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return EventFilter.PROCESS
 
-    def _walk_filtered_directory(self, oid, history):
+    def _walk_filtered_directory(self, oid: str, history: Set[str]):
         if oid not in history:
             history.add(oid)
             try:
@@ -801,7 +801,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         page_token = self.current_cursor
         assert page_token
         done = False
-        walk_history = set()
+        walk_history: Set[str] = set()
 
         while not done:
             # log.debug("looking for events, timeout: %s", timeout)
@@ -822,7 +822,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     continue
                 if filter_result == EventFilter.WALK and event.otype == DIRECTORY:
                     log.debug("directory created in or renamed into root - walking: %s", event.path)
-                    yield from self._walk_filtered_directory(event, walk_history)
+                    yield from self._walk_filtered_directory(event.oid, walk_history)
                 yield event
 
             if new_cursor and page_token and new_cursor != page_token:

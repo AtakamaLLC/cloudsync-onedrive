@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import re
+import typing
 from unittest.mock import patch
 
 import pytest
@@ -475,7 +476,7 @@ def test_list_namespaces():
 
 def test_walk_filtered_directory():
     api, odp = fake_odp()
-    history = set()
+    history: typing.Set[str] = set()
     with patch.object(odp, "walk_oid", return_value=[]) as walk:
         for _ in odp._walk_filtered_directory("oid1", history):
             pass
