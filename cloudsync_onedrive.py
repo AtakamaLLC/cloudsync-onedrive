@@ -787,6 +787,20 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return EventFilter.PROCESS
 
     def _walk_filtered_directory(self, oid: str, history: Set[str]):
+        """
+        Optimized walk for event filtering:
+
+        When a folder is copied to/created in our sync root we get events for each child of that folder, but we also
+        end up walking that folder recursively because there is no way to distinguish a copy/create (which does not
+        require a walk) from a move (which does require a walk)
+
+        Recursively walking (the traditional way) a folder with many child folders on copy/create thus presents
+        a performance bottleneck -- we end up walking the child folders multiple times, since we get an event for
+        each child folder.
+
+        This modified recursive walk attempts to alleviate that somewhat by keeping track of walked oids, ensuring
+        that a given folder is walked at most once per events() call.
+        """
         if oid not in history:
             history.add(oid)
             try:
