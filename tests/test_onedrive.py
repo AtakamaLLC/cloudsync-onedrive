@@ -479,8 +479,8 @@ def test_walk_filtered_directory():
     history: typing.Set[str] = set()
     event_file = Event(FILE, "oid7", "", "", True)
     with patch.object(odp, "walk_oid", return_value=[event_file]) as walk:
-        for _ in odp._walk_filtered_directory("oid1", history):
-            pass
+        for e in odp._walk_filtered_directory("oid1", history):
+            assert e.oid == event_file.oid
         for _ in odp._walk_filtered_directory("oid1", history):
             pass
         walk.assert_called_once_with("oid1", recursive=False)
@@ -492,8 +492,8 @@ def test_walk_filtered_directory():
 
     event_dir = Event(DIRECTORY, "oid8", "", "", True)
     with patch.object(odp, "walk_oid", return_value=[event_dir]) as walk:
-        for _ in odp._walk_filtered_directory("oid3", history):
-            pass
+        for e in odp._walk_filtered_directory("oid3", history):
+            assert e.oid in [event_dir.oid, "oid3"]
         walk.assert_has_calls([call("oid3", recursive=False), call("oid8", recursive=False)])
 
         def cloud_fnf_error(oid, recursive=True):
