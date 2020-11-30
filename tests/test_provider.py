@@ -2,6 +2,7 @@
 
 import io
 import requests
+import cloudsync_onedrive
 from cloudsync.tests import *
 from unittest.mock import patch
 
@@ -122,3 +123,36 @@ def test_two_step_rename(provider):
         provider.rename(file_info.oid, two_step)
         m.assert_called()
 
+
+def test_event_filter_walk(provider):
+    # mock out sync_state interface
+    class MockState:
+        def get_path(self, oid):
+            return None
+    provider.prov.sync_state = MockState()
+
+    # set a sync root and drain events
+    root_oid = provider.mkdir("root")
+    root = provider.set_root(root_oid=root_oid)
+    assert root_oid == root[1]
+    for _ in provider.events():
+        pass
+
+    # create a folder+file outside of root, ensure no events are generated (these events should be filtered out)
+    irrelevant_folder_oid = provider.mkdir("irrelevant")
+    irrelevant_file_oid = provider.create("irrelevant/whatever.txt", io.BytesIO(b"whatever")).oid
+    for e in provider.events():
+        if e.oid == irrelevant_file_oid or e.oid == irrelevant_folder_oid:
+            assert False
+
+    # move said folder+file into root, ensure we get an event for each
+    provider.rename(irrelevant_folder_oid, "root/relevant")
+    got_folder_event = False
+    got_file_event = False
+    for e in provider.events():
+        if e.oid == irrelevant_folder_oid:
+            got_folder_event = True
+        elif e.oid == irrelevant_file_oid:
+            got_file_event = True
+    assert got_folder_event
+    assert got_file_event

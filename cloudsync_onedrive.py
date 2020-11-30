@@ -18,7 +18,7 @@ import asyncio
 import hashlib
 import json
 import enum
-from typing import Generator, Optional, Dict, Any, Iterable, List, Union, cast
+from typing import Generator, Optional, Dict, Any, Iterable, List, Set, Union, cast
 import urllib.parse
 import webbrowser
 from base64 import b64encode
@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.2.3"  # pragma: no cover
+__version__ = "2.2.4"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -786,11 +786,36 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return EventFilter.PROCESS
 
+    def _walk_filtered_directory(self, oid: str, history: Set[str]):
+        """
+        Optimized walk for event filtering:
+
+        When a folder is copied to/created in our sync root we get events for each child of that folder, but we also
+        end up walking that folder recursively because there is no way to distinguish a copy/create (which does not
+        require a walk) from a move (which does require a walk)
+
+        Recursively walking (the traditional way) a folder with many child folders on copy/create thus presents
+        a performance bottleneck -- we end up walking the child folders multiple times, since we get an event for
+        each child folder.
+
+        This modified recursive walk attempts to alleviate that somewhat by keeping track of walked oids, ensuring
+        that a given folder is walked at most once per events() call.
+        """
+        if oid not in history:
+            history.add(oid)
+            try:
+                for event in self.walk_oid(oid, recursive=False):
+                    if event.otype == DIRECTORY:
+                        yield from self._walk_filtered_directory(event.oid, history)
+                    yield event
+            except CloudFileNotFoundError:
+                pass
 
     def events(self) -> Generator[Event, None, None]:      # pylint: disable=too-many-locals, too-many-branches
         page_token = self.current_cursor
         assert page_token
         done = False
+        walk_history: Set[str] = set()
 
         while not done:
             # log.debug("looking for events, timeout: %s", timeout)
@@ -806,18 +831,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             for change in events:
                 event = self._convert_to_event(change, new_cursor)
-                log.debug("converted event %s as %s", change, event)
                 filter_result = self._filter_event(event)
                 if filter_result == EventFilter.IGNORE:
-                    if event:
-                        log.debug("ignore event: %s %s %s", event.path, event.oid, event.exists)
                     continue
-                if filter_result == EventFilter.WALK:
+                if filter_result == EventFilter.WALK and event.otype == DIRECTORY:
                     log.debug("directory created in or renamed into root - walking: %s", event.path)
-                    try:
-                        yield from self.walk_oid(event.oid)
-                    except CloudFileNotFoundError:
-                        pass
+                    yield from self._walk_filtered_directory(event.oid, walk_history)
                 yield event
 
             if new_cursor and page_token and new_cursor != page_token:
