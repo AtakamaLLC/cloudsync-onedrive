@@ -212,8 +212,7 @@ class FakeGraphApi(FakeApi):
               "id": "xyz.sharepoint.com,ffffffff-7777-ffff-eeee-acccaeeccccc,aaaaaaaa-1111-cccc-eeee-ddddddc00000",
               "lastModifiedDateTime": "2020-06-10T22:49:03Z",
               "name": "sub-1",
-              "webUrl": "https://xyz.sharepoint.com/sites/cloudsync-test-1/sub-1",
-              "displayName": "cloudsync-sub-site-1"
+              "webUrl": "https://xyz.sharepoint.com/sites/cloudsync-test-1/sub-1"
             } ] }
         """)
 
@@ -439,7 +438,8 @@ def test_list_namespaces():
     assert "Shared With Me" in namespaces
     # sites are listed
     assert "cloudsync-test-1" in namespaces
-    assert "cloudsync-sub-site-1" in namespaces
+    # site with missing "displayName" attribute - "name" attribute used instead
+    assert "sub-1" in namespaces
     # protals are ignored
     assert "Community" not in namespaces
     # site fetch done once in connect() and again in list_ns()
