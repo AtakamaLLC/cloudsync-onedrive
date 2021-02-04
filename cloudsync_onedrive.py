@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.2.4"  # pragma: no cover
+__version__ = "2.2.5"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -447,13 +447,14 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _fetch_sites(self):
         # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
         sites = self._direct_api("get", "/sites?search=*").get("value", [])
-        sites.sort(key=lambda s: s["displayName"].lower())
+        sites.sort(key=lambda s: (s.get("displayName") or s.get("name", "")).lower())
         for site in sites:
             try:
                 # TODO: use configurable regex for filtering?
                 url_path = urllib.parse.unquote_plus(urllib.parse.urlparse(site["webUrl"]).path).lower()
                 if not url_path.startswith("/portals/"):
-                    self.__site_by_id[site["id"]] = Site(name=site["displayName"], id=site["id"])
+                    name = site.get("displayName") or site.get("name", "")
+                    self.__site_by_id[site["id"]] = Site(name=name, id=site["id"])
             except Exception as e:
                 log.warning("failed to get site info: %s", repr(e))
 
