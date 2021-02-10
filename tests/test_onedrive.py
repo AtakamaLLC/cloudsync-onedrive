@@ -462,9 +462,6 @@ def test_list_namespaces():
 
 
 def test_mtime():
-    import arrow
-    # assert arrow.get().timestamp == 0
-
     mtime = OneDriveProvider._parse_time("2020-05-07T20:39:38Z")
     assert mtime == 1588883978
     mtime = OneDriveProvider._parse_time(None)
