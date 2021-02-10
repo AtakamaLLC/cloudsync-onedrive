@@ -459,3 +459,17 @@ def test_list_namespaces():
     site = Namespace(name="name", id="site-id-2")
     children = odp2.list_ns(parent=site)
     assert children
+
+
+def test_mtime():
+    import arrow
+    # assert arrow.get().timestamp == 0
+
+    mtime = OneDriveProvider._parse_time("2020-05-07T20:39:38Z")
+    assert mtime == 1588883978
+    mtime = OneDriveProvider._parse_time(None)
+    assert mtime == 0
+    mtime = OneDriveProvider._parse_time("")
+    assert mtime == 0
+    mtime = OneDriveProvider._parse_time("0")
+    assert mtime == 0
