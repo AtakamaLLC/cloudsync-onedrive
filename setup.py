@@ -1,5 +1,5 @@
-from setuptools import setup  # pragma: no cover
 import sys  # pragma: no cover
+from setuptools import setup  # pragma: no cover
 
 setup(  # pragma: no cover
     name='cloudsync-onedrive',
