@@ -8,7 +8,7 @@ pytest-timeout
 pytest-xdist
 diff-cover
 # from pyproject.toml
-cloudsync~=3.0.0a1
+cloudsync~=3.0.0a2
 onedrivesdk_fork
 quickxorhash
 dataclasses
