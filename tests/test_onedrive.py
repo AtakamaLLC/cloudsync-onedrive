@@ -4,12 +4,13 @@ import io
 import json
 import logging
 import re
-from unittest.mock import patch
+import typing
+from unittest.mock import patch, call
 
 import pytest
 
 from onedrivesdk_fork.error import ErrorCode
-from cloudsync.exceptions import CloudNamespaceError, CloudTokenError
+from cloudsync.exceptions import CloudNamespaceError, CloudTokenError, CloudFileNotFoundError
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
@@ -49,7 +50,7 @@ class FakeGraphApi(FakeApi):
         self.called("_fetch_personal_drives", (ctx, req))
         if self.multiple_personal_drives:
             return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'}, {'id': '31fd31276064ddb', 'driveType': 'business', 'name': 'drive-2'}]}
-        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'}]}
+        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal', 'owner': {'user': {'displayName': 'owner-name', 'id': 'owner-id'}}}]}
 
     @api_route("/me/drive/sharedWithMe")
     def me_drive_shared_with_me(self, ctx, req):
@@ -211,8 +212,7 @@ class FakeGraphApi(FakeApi):
               "id": "xyz.sharepoint.com,ffffffff-7777-ffff-eeee-acccaeeccccc,aaaaaaaa-1111-cccc-eeee-ddddddc00000",
               "lastModifiedDateTime": "2020-06-10T22:49:03Z",
               "name": "sub-1",
-              "webUrl": "https://xyz.sharepoint.com/sites/cloudsync-test-1/sub-1",
-              "displayName": "cloudsync-sub-site-1"
+              "webUrl": "https://xyz.sharepoint.com/sites/cloudsync-test-1/sub-1"
             } ] }
         """)
 
@@ -269,6 +269,15 @@ def fake_odp():
         # onedrive saves refresh token if creds change
         assert prov._creds["refresh_token"] == NEW_TOKEN
         return srv, prov
+
+
+def test_latest_cursor():
+    _, odp = fake_odp()
+    with patch.object(odp, "events") as events:
+        with patch.object(odp, "_direct_api") as direct:
+            odp.latest_cursor
+            events.assert_not_called()
+            direct.assert_called_once()
 
 
 def test_upload():
@@ -350,6 +359,9 @@ def test_namespace_get():
     assert ns
     assert nsid
     assert ns.id == nsid
+    assert ns.owner == "owner-name"
+    assert ns.owner_id == "owner-id"
+    assert ns.owner_type == "user"
 
 
 def test_namespace_set():
@@ -426,7 +438,8 @@ def test_list_namespaces():
     assert "Shared With Me" in namespaces
     # sites are listed
     assert "cloudsync-test-1" in namespaces
-    assert "cloudsync-sub-site-1" in namespaces
+    # site with missing "displayName" attribute - "name" attribute used instead
+    assert "sub-1" in namespaces
     # protals are ignored
     assert "Community" not in namespaces
     # site fetch done once in connect() and again in list_ns()
@@ -470,3 +483,34 @@ def test_mtime():
     assert mtime == 0
     mtime = OneDriveProvider._parse_time("0")
     assert mtime == 0
+
+
+def test_walk_filtered_directory():
+    api, odp = fake_odp()
+    history: typing.Set[str] = set()
+    event_file = Event(FILE, "oid7", "", "", True)
+    with patch.object(odp, "walk_oid", return_value=[event_file]) as walk:
+        for e in odp._walk_filtered_directory("oid1", history):
+            assert e.oid == event_file.oid
+        for _ in odp._walk_filtered_directory("oid1", history):
+            pass
+        walk.assert_called_once_with("oid1", recursive=False)
+
+        walk.reset_mock()
+        for _ in odp._walk_filtered_directory("oid2", history):
+            pass
+        walk.assert_called_once_with("oid2", recursive=False)
+
+    event_dir = Event(DIRECTORY, "oid8", "", "", True)
+    with patch.object(odp, "walk_oid", return_value=[event_dir]) as walk:
+        for e in odp._walk_filtered_directory("oid3", history):
+            assert e.oid in [event_dir.oid, "oid3"]
+        walk.assert_has_calls([call("oid3", recursive=False), call("oid8", recursive=False)])
+
+        def cloud_fnf_error(oid, recursive=True):
+            raise CloudFileNotFoundError(f"{oid}-{recursive}")
+
+        with patch.object(odp, "walk_oid", cloud_fnf_error):
+            # should not raise
+            for _ in odp._walk_filtered_directory("oid4", history):
+                pass

@@ -18,7 +18,7 @@ import asyncio
 import hashlib
 import json
 import enum
-from typing import Generator, Optional, Dict, Any, Iterable, List, Union, cast
+from typing import Generator, Optional, Dict, Any, Iterable, List, Set, Union, cast
 import urllib.parse
 import webbrowser
 from base64 import b64encode
@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.0.0" # pragma: no cover
+__version__ = "3.0.0"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -236,6 +236,8 @@ class Drive(Namespace):
     parent: "Optional[Site]" = None
     url: str = ""
     owner: str = ""
+    owner_type: str = ""
+    owner_id: str = ""
     site_id: str = field(init=False)
     drive_id: str = field(init=False)
     paths: List[str] = field(default_factory=list)
@@ -381,11 +383,16 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _save_drive_info(self, parent, drive_json):
         ids = f"{parent.id}|{drive_json['id']}"
-        owner = (drive_json["owner"].get("user") or drive_json["owner"].get("group", {})) if "owner" in drive_json else {}
+        owner = drive_json.get("owner")
+        owner_type = list(owner)[0] if owner else ""
+        owner_id = owner[owner_type].get("id", "") if owner else ""
+        owner_name = owner[owner_type].get("displayName", "") if owner else ""
         drive = Drive(f'{parent.name}/{drive_json.get("name", "Personal")}', ids,
                       parent=parent,
                       url=drive_json.get("webUrl"),
-                      owner=owner.get("displayName"))
+                      owner=owner_name,
+                      owner_id=owner_id,
+                      owner_type=owner_type)
         self.__drive_by_id[ids] = drive
 
     def _save_shared_with_me_info(self, shared_json):
@@ -440,13 +447,14 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _fetch_sites(self):
         # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
         sites = self._direct_api("get", "/sites?search=*").get("value", [])
-        sites.sort(key=lambda s: s["displayName"].lower())
+        sites.sort(key=lambda s: (s.get("displayName") or s.get("name", "")).lower())
         for site in sites:
             try:
                 # TODO: use configurable regex for filtering?
                 url_path = urllib.parse.unquote_plus(urllib.parse.urlparse(site["webUrl"]).path).lower()
                 if not url_path.startswith("/portals/"):
-                    self.__site_by_id[site["id"]] = Site(name=site["displayName"], id=site["id"])
+                    name = site.get("displayName") or site.get("name", "")
+                    self.__site_by_id[site["id"]] = Site(name=name, id=site["id"])
             except Exception as e:
                 log.warning("failed to get site info: %s", repr(e))
 
@@ -566,23 +574,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return False
 
     def get_quota(self):
-        dat = self._direct_api("get", "/me/drive/")
+        dat = self._direct_api("get", f"/drives/{self.namespace.drive_id}")
         self.__cached_is_biz = dat["driveType"] != 'personal'
-
         log.debug("my drive %s", dat)
-
-        display_name = dat["owner"].get("user", {}).get("displayName")
-        if not display_name:
-            display_name = dat["owner"].get("group", {}).get("displayName")
-
-        res = {
+        return {
             'used': dat["quota"]["total"]-dat["quota"]["remaining"],
             'limit': dat["quota"]["total"],
-            'login': display_name,
+            'login': self._personal_drive.drives[0].owner,
             'drive_id': dat['id'],                # drive id
         }
-
-        return res
 
     def reconnect(self):
         self.connect(self._creds)
@@ -684,14 +684,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @property
     def latest_cursor(self):
-        save_cursor = self.__cursor
-        self.__cursor = self._get_url("/drives/%s/root/delta" % self._validated_namespace_id)
-        log.debug("cursor %s", self.__cursor)
-        for _ in self.events():
-            pass
-        retval = self.__cursor
-        self.__cursor = save_cursor
-        return retval
+        # see: https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_delta?view=odsp-graph-online#parameters
+        res = self._direct_api("get", f"/drives/{self._validated_namespace_id}/root/delta?token=latest")
+        return res.get('@odata.deltaLink')
 
     @property
     def current_cursor(self):
@@ -792,11 +787,36 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return EventFilter.PROCESS
 
+    def _walk_filtered_directory(self, oid: str, history: Set[str]):
+        """
+        Optimized walk for event filtering:
+
+        When a folder is copied to/created in our sync root we get events for each child of that folder, but we also
+        end up walking that folder recursively because there is no way to distinguish a copy/create (which does not
+        require a walk) from a move (which does require a walk)
+
+        Recursively walking (the traditional way) a folder with many child folders on copy/create thus presents
+        a performance bottleneck -- we end up walking the child folders multiple times, since we get an event for
+        each child folder.
+
+        This modified recursive walk attempts to alleviate that somewhat by keeping track of walked oids, ensuring
+        that a given folder is walked at most once per events() call.
+        """
+        if oid not in history:
+            history.add(oid)
+            try:
+                for event in self.walk_oid(oid, recursive=False):
+                    if event.otype == DIRECTORY:
+                        yield from self._walk_filtered_directory(event.oid, history)
+                    yield event
+            except CloudFileNotFoundError:
+                pass
 
     def events(self) -> Generator[Event, None, None]:      # pylint: disable=too-many-locals, too-many-branches
         page_token = self.current_cursor
         assert page_token
         done = False
+        walk_history: Set[str] = set()
 
         while not done:
             # log.debug("looking for events, timeout: %s", timeout)
@@ -812,18 +832,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             for change in events:
                 event = self._convert_to_event(change, new_cursor)
-                log.debug("converted event %s as %s", change, event)
                 filter_result = self._filter_event(event)
                 if filter_result == EventFilter.IGNORE:
-                    if event:
-                        log.debug("ignore event: %s %s %s", event.path, event.oid, event.exists)
                     continue
-                if filter_result == EventFilter.WALK:
+                if filter_result == EventFilter.WALK and event.otype == DIRECTORY:
                     log.debug("directory created in or renamed into root - walking: %s", event.path)
-                    try:
-                        yield from self.walk_oid(event.oid)
-                    except CloudFileNotFoundError:
-                        pass
+                    yield from self._walk_filtered_directory(event.oid, walk_history)
                 yield event
 
             if new_cursor and page_token and new_cursor != page_token:

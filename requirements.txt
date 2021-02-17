@@ -1,7 +1,7 @@
 # dev/deploy
 flit
 pylint
-mypy==0.790
+mypy<0.800
 pytest
 pytest-coverage
 pytest-timeout
