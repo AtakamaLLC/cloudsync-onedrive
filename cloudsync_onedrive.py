@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.2.5"  # pragma: no cover
+__version__ = "3.0.0"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -1034,6 +1034,19 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return oid
 
+
+    @staticmethod
+    def _parse_time(time_str):
+        try:
+            if time_str:
+                ret_val = arrow.get(time_str).timestamp
+            else:
+                ret_val = 0
+        except Exception as e:  # pragma: no cover
+            log.error("could not convert time string '%s' to timestamp: %s", time_str, e)
+            ret_val = 0
+        return ret_val
+
     def _info_from_rest(self, item, root=None):
         name = item["name"]
         if root:
@@ -1054,6 +1067,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         name = item["name"]
         size = item["size"]
         mtime = item["lastModifiedDateTime"]
+        mtime = mtime and self._parse_time(mtime)
         shared = False
         if "createdBy" in item:
             shared = bool(item.get("remoteItem"))
@@ -1169,8 +1183,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if path is None:
             path = odi.path
 
+        mtime = item.last_modified_date_time
+        mtime = mtime and self._parse_time(mtime)
+
         return OneDriveInfo(oid=odi.oid, otype=otype, hash=ohash, path=odi.path, pid=odi.pid, name=item.name,
-                            mtime=item.last_modified_date_time, shared=item.shared)
+                            mtime=mtime, shared=item.shared, size=item.size)
 
     def exists_path(self, path) -> bool:
         try:

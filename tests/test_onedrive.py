@@ -474,6 +474,17 @@ def test_list_namespaces():
     assert children
 
 
+def test_mtime():
+    mtime = OneDriveProvider._parse_time("2020-05-07T20:39:38Z")
+    assert mtime == 1588883978
+    mtime = OneDriveProvider._parse_time(None)
+    assert mtime == 0
+    mtime = OneDriveProvider._parse_time("")
+    assert mtime == 0
+    mtime = OneDriveProvider._parse_time("0")
+    assert mtime == 0
+
+
 def test_walk_filtered_directory():
     api, odp = fake_odp()
     history: typing.Set[str] = set()
