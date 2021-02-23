@@ -10,7 +10,7 @@ from unittest.mock import patch, call
 import pytest
 
 from onedrivesdk_fork.error import ErrorCode
-from cloudsync.exceptions import CloudNamespaceError, CloudTokenError, CloudFileNotFoundError
+from cloudsync.exceptions import CloudNamespaceError, CloudTokenError, CloudFileNotFoundError, CloudDisconnectedError
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
@@ -518,6 +518,7 @@ def test_walk_filtered_directory():
 def test_connect_resiliency():
     api, odp = fake_odp()
     odp.disconnect()
+    odp._creds = {"access_token": "t", "refresh": "r"}
     direct_api_og = odp._direct_api
 
     def direct_api_raises_errors(action, path: str):
@@ -527,8 +528,28 @@ def test_connect_resiliency():
             raise Exception("no sharing")
         return direct_api_og(action, path)
 
+    # ensure non-connectivity errors are ignored
     with patch.object(OneDriveProvider, "_base_url", api.uri()):
         with patch.object(odp, '_direct_api', side_effect=direct_api_raises_errors):
-            # ensure no errors raised
             odp.reconnect()
-            namespaces = odp.list_ns()
+            log.info("namespaces: %s", odp.list_ns())
+
+def test_connect_raises_token_errors():
+    api, odp = fake_odp()
+    odp.disconnect()
+    odp._creds = {"access_token": "t", "refresh": "r"}
+    direct_api_og = odp._direct_api
+
+    def direct_api_raises_errors(action, path: str):
+        if path.find("sites?search=*") > -1:
+            raise CloudTokenError("bad token")
+        if path.find("me/drive/sharedWithMe") > -1:
+            raise CloudTokenError("really bad token")
+        return direct_api_og(action, path)
+
+    # ensure connectivity errors bubble up
+    with patch.object(OneDriveProvider, "_base_url", api.uri()):
+        with patch.object(odp, '_direct_api', side_effect=direct_api_raises_errors):
+            odp.reconnect()
+            with pytest.raises(CloudTokenError):
+                odp.list_ns()
