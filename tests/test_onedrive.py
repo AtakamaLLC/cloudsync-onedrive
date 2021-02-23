@@ -443,7 +443,7 @@ def test_list_namespaces():
     # protals are ignored
     assert "Community" not in namespaces
     # site fetch done once in connect() and again in list_ns()
-    assert len(api.calls["_fetch_sites"]) == 2
+    assert len(api.calls["_fetch_sites"]) == 1
     # personal has no children
     personal = namespace_objs[0]
     assert not personal.is_parent
@@ -463,7 +463,7 @@ def test_list_namespaces():
     api2, odp2 = fake_odp()
     namespaces = odp2.list_ns(recursive=True)
     # fetch additional info for 2 sites
-    assert len(api2.calls["_fetch_sites"]) == 4
+    assert len(api2.calls["_fetch_sites"]) == 3
 
     # parent
     site = Namespace(name="name", id="site-id-1")
@@ -514,3 +514,21 @@ def test_walk_filtered_directory():
             # should not raise
             for _ in odp._walk_filtered_directory("oid4", history):
                 pass
+
+def test_connect_resiliency():
+    api, odp = fake_odp()
+    odp.disconnect()
+    direct_api_og = odp._direct_api
+
+    def direct_api_raises_errors(action, path: str):
+        if path.find("sites?search=*") > -1:
+            raise Exception("no sites for you")
+        if path.find("me/drive/sharedWithMe") > -1:
+            raise Exception("no sharing")
+        return direct_api_og(action, path)
+
+    with patch.object(OneDriveProvider, "_base_url", api.uri()):
+        with patch.object(odp, '_direct_api', side_effect=direct_api_raises_errors):
+            # ensure no errors raised
+            odp.reconnect()
+            namespaces = odp.list_ns()
