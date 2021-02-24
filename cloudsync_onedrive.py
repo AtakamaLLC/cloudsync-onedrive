@@ -22,7 +22,7 @@ from typing import Generator, Optional, Dict, Any, Iterable, List, Set, Union, c
 import urllib.parse
 import webbrowser
 from base64 import b64encode
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 import time
 import requests
 import arrow
@@ -233,7 +233,6 @@ class OneDriveItem():
 
 @dataclass
 class Drive(Namespace):
-    # TODO: prevent recursion on print
     parent: "Optional[Site]" = None
     url: str = ""
     owner: str = ""
@@ -255,13 +254,17 @@ class Drive(Namespace):
             self.site_id = ids[0]
             self.drive_id = ids[1]
         else:
-            self.site_id = None
+            self.site_id = ""
             self.drive_id = self.id
+
+    def __repr__(self):
+        d = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "parent"}
+        d["parent"] = self.parent.name if self.parent else None
+        return str(d)
 
 
 @dataclass
 class Site(Namespace):
-    # TODO: prevent recursion on print
     drives: List[Drive] = field(default_factory=list)
 
     @property
