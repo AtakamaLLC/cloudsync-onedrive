@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.0.0"  # pragma: no cover
+__version__ = "3.0.1"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -390,54 +390,66 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         # wrapper for _direct_api that raises only connectivity errors - other errors are caught and logged
         try:
             return self._direct_api(method, path)
-        except (CloudDisconnectedError, CloudTokenError):
+        except (CloudDisconnectedError, CloudTokenError, CloudTemporaryError):
             raise
         except Exception as e:
             log.warning("%s failed with %s", path, repr(e))
             return default
 
     def _save_drive_info(self, parent, drive_json):
-        ids = f"{parent.id}|{drive_json['id']}"
-        owner = drive_json.get("owner")
-        owner_type = list(owner)[0] if owner else ""
-        owner_id = owner[owner_type].get("id", "") if owner else ""
-        owner_name = owner[owner_type].get("displayName", "") if owner else ""
-        drive = Drive(f'{parent.name}/{drive_json.get("name", "Personal")}', ids,
-                      parent=parent,
-                      url=drive_json.get("webUrl"),
-                      owner=owner_name,
-                      owner_id=owner_id,
-                      owner_type=owner_type)
-        self.__drive_by_id[ids] = drive
+        try:
+            ids = f"{parent.id}|{drive_json['id']}"
+            owner = drive_json.get("owner")
+            owner_type = list(owner)[0] if owner else ""
+            owner_id = owner[owner_type].get("id", "") if owner else ""
+            owner_name = owner[owner_type].get("displayName", "") if owner else ""
+            drive = Drive(f'{parent.name}/{drive_json.get("name", "Personal")}', ids,
+                          parent=parent,
+                          url=drive_json.get("webUrl"),
+                          owner=owner_name,
+                          owner_id=owner_id,
+                          owner_type=owner_type)
+            self.__drive_by_id[ids] = drive
+        except Exception as e:
+            log.warning("Failed to parse drive json: %s %s", drive_json, repr(e))
 
     def _save_shared_with_me_info(self, shared_json):
-        ids = f"{self._shared_with_me.id}|{shared_json['remoteItem']['parentReference']['driveId']}"
-        url = shared_json["webUrl"]
-        split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
-        drive = self.__drive_by_id.get(ids)
-        if not drive:
-            shared_by = shared_json["remoteItem"]["shared"]["sharedBy"]
-            owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
-            site_name = "Personal" if split_path[1] == "personal" else split_path[2]
-            name = f"Shared/{owner}/{site_name}/{split_path[3]}"
-            drive = Drive(name, ids,
-                          parent=self._shared_with_me,
-                          url=url,
-                          owner=owner)
-            self.__drive_by_id[ids] = drive
-        drive.paths.append("/" + "/".join(split_path[4:]))
+        try:
+            if "folder" not in shared_json:
+                # we only care about shared folders, not files
+                return
+
+            ids = f"{self._shared_with_me.id}|{shared_json['remoteItem']['parentReference']['driveId']}"
+            url = shared_json["webUrl"]
+            split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
+            drive = self.__drive_by_id.get(ids)
+            if not drive:
+                shared_by = shared_json["remoteItem"]["shared"]["sharedBy"]
+                owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
+                site_name = "Personal" if split_path[1] == "personal" else split_path[2]
+                name = f"Shared/{owner}/{site_name}/{split_path[3]}"
+                drive = Drive(name, ids,
+                              parent=self._shared_with_me,
+                              url=url,
+                              owner=owner)
+                self.__drive_by_id[ids] = drive
+            drive.paths.append("/" + "/".join(split_path[4:]))
+        except Exception as e:
+            log.warning("Failed to parse shared folder json: %s %s", shared_json, repr(e))
 
     def _fetch_personal_drives(self):
-        if self._personal_drive.drives:
-            return
-
         try:
+            if self._personal_drive.drives:
+                return
+
             # personal drive: "most users will only have a single drive resource" - Microsoft
             # see: https://docs.microsoft.com/en-us/graph/api/drive-list?view=graph-rest-1.0&tabs=http
             # we require at least one personal drive, but some users could have multiple
             drives = self._direct_api("get", "/me/drives")["value"]
             for drive in drives:
                 self._save_drive_info(self._personal_drive, drive)
+            if not self._personal_drive.drives:
+                raise RuntimeError("no personal drive")
             if len(self._personal_drive.drives) == 1:
                 self._personal_drive.drives[0].name = "Personal"
             else:
@@ -454,11 +466,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         # drive items from other drives shared with current user
         shared = self._safe_direct_api("/me/drive/sharedWithMe", default={})
         for item in shared.get("value", []):
-            try:
-                if "folder" in item:
-                    self._save_shared_with_me_info(item)
-            except Exception as e:
-                log.warning("failed to get shared item info: %s %s", repr(e), item)  # pragma: no cover
+            self._save_shared_with_me_info(item)
         if self._shared_with_me.drives:
             self._shared_with_me.drives.sort(key=lambda d: d.name.lower())
             self.__site_by_id[self._shared_with_me.id] = self._shared_with_me
@@ -661,6 +669,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self._creds = creds
 
         self._fetch_personal_drives()
+        # validate namespace if specified, default to personal drive if not
         self.namespace_id = self.namespace_id or self._personal_drive.drives[0].id
         return self._personal_drive.drives[0].drive_id
 
