@@ -1379,7 +1379,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if ids.drive_id == self._personal_drive.drives[0].drive_id:
                     drive = self._personal_drive.drives[0]
                 else:
-                    api_drive = self._safe_direct_api(f"/drives/{ids.drive_id}/")
+                    api_drive = self._direct_api("get", f"/drives/{ids.drive_id}/")
                     if not api_drive:
                         raise CloudNamespaceError(f"Unknown drive id: {ns_id}")
                     drive = Drive(api_drive.get("name", "Personal"), ns_id)
