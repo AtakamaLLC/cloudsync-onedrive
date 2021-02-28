@@ -748,7 +748,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             log.debug("ignore event: drive root")
             return None
 
-        ts = arrow.get(change.get('lastModifiedDateTime')).float_timestamp
+        ts = arrow.get(change.get('lastModifiedDateTime', time.time())).float_timestamp
         oid = change.get('id')
         exists = not change.get('deleted')
 
