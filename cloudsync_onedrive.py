@@ -138,7 +138,7 @@ def _get_size_and_seek0(file_like):
     return size
 
 
-class OneDriveItem():
+class OneDriveItem:
     """Use to covert oid to path or path to oid.   Don't try to keep it around, or reuse it."""
     def __init__(self, prov, *, oid=None, path=None, pid=None):
         self.__prov = prov
@@ -150,6 +150,9 @@ class OneDriveItem():
         if path == "/":
             path = None
             oid = "root"
+
+        if oid == "root":
+            oid = prov.namespace.root_oid
 
         self.__oid = oid
         self.__path = path
@@ -207,7 +210,7 @@ class OneDriveItem():
             return "/drives/%s/items/%s" % (self._drive_id, self.__oid)
         if self.__path:
             enc_path = urllib.parse.quote(self.__path)
-            return "/drives/%s/root:%s" % (self._drive_id, enc_path)
+            return "/drives/%s/%s:%s" % (self._drive_id, self.__prov.namespace.root_path, enc_path)
         raise AssertionError("This should not happen, since __init__ verifies that there is one or the other")
 
     def get(self):
@@ -238,13 +241,23 @@ class Drive(Namespace):
     owner: str = ""
     owner_type: str = ""
     owner_id: str = ""
-    site_id: str = field(init=False)
-    drive_id: str = field(init=False)
+    site_id: str = ""
+    drive_id: str = ""
+    shared_folder_id: str = ""
     paths: List[str] = field(default_factory=list)
 
     @property
-    def shared_paths(self) -> List[str]:
-        return self.paths
+    def is_shared(self) -> bool:
+        return bool(self.shared_folder_id)
+
+    @property
+    def root_oid(self) -> str:
+        return self.shared_folder_id if self.shared_folder_id else "root"
+
+    @property
+    def root_path(self) -> str:
+        return f"items/{self.shared_folder_id}" if self.shared_folder_id else "root"
+
 
     def __post_init__(self):
         if self.parent:
@@ -253,8 +266,11 @@ class Drive(Namespace):
         if len(ids) == 2:
             self.site_id = ids[0]
             self.drive_id = ids[1]
+        elif len(ids) == 3:
+            self.site_id = ids[0]
+            self.drive_id = ids[1]
+            self.shared_folder_id = ids[2]
         else:
-            self.site_id = ""
             self.drive_id = self.id
 
     def __repr__(self):
@@ -415,27 +431,30 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _save_shared_with_me_info(self, shared_json):
         try:
-            if "folder" not in shared_json:
-                # we only care about shared folders, not files
+            remote_item = shared_json.get("remoteItem")
+            if not remote_item or "folder" not in remote_item:
+                # we only care about shared folders, not shared files
                 return
 
-            ids = f"{self._shared_with_me.id}|{shared_json['remoteItem']['parentReference']['driveId']}"
-            url = shared_json["webUrl"]
+            ids = f"{self._shared_with_me.id}|{remote_item['parentReference']['driveId']}|{remote_item['id']}"
+            url = remote_item["webUrl"]
             split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
-            drive = self.__drive_by_id.get(ids)
-            if not drive:
-                shared_by = shared_json["remoteItem"]["shared"]["sharedBy"]
-                owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
+            shared = remote_item["shared"]
+            shared_by = shared.get("sharedBy") or shared.get("owner")
+            owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
+            if self._is_biz:
                 site_name = "Personal" if split_path[1] == "personal" else split_path[2]
-                name = f"Shared/{owner}/{site_name}/{split_path[3]}"
-                drive = Drive(name, ids,
-                              parent=self._shared_with_me,
-                              url=url,
-                              owner=owner)
-                self.__drive_by_id[ids] = drive
-            drive.paths.append("/" + "/".join(split_path[4:]))
+            else:
+                site_name = "Personal"
+            name = f"Shared/{owner}/{site_name}/{remote_item['name']}"
+            drive = Drive(name, ids,
+                          parent=self._shared_with_me,
+                          url=url,
+                          owner=owner)
+            self.__drive_by_id[ids] = drive
         except Exception as e:
             log.warning("Failed to parse shared folder json: %s %s", shared_json, repr(e))
+
 
     def _fetch_personal_drives(self):
         try:
@@ -529,7 +548,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @memoize
     def _check_ns(self, nsid, conn_id_for_memo):                                 # pylint: disable=unused-argument
-        res = self._direct_api("get", "/drives/%s/items/%s" % (nsid, "root"), raw_response=True)
+        res = self._direct_api("get", "/drives/%s/items/%s" % (nsid, self.namespace.root_oid), raw_response=True)
         return res.status_code < 300
 
     def _raise_converted_error(self, *, ex=None, req=None):      # pylint: disable=too-many-branches, too-many-statements
@@ -709,7 +728,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     @property
     def latest_cursor(self):
         # see: https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_delta?view=odsp-graph-online#parameters
-        res = self._direct_api("get", f"/drives/{self._validated_namespace_id}/root/delta?token=latest")
+        res = self._direct_api("get", f"/drives/{self._validated_namespace_id}/{self.namespace.root_path}/delta?token=latest")
         return res.get('@odata.deltaLink')
 
     @property
@@ -774,6 +793,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return Event(otype, oid, path, ohash, exists, ts, new_cursor=new_cursor)
 
     def _filter_event(self, event: Event) -> EventFilter:
+        # TODO(root)
         # event filtering based on root path and event path
 
         if not event:
@@ -1089,7 +1109,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         pid = item["parentReference"].get("id")
         name = item["name"]
-        size = item["size"]
+        size = item.get("size", 0)
         mtime = item["lastModifiedDateTime"]
         mtime = mtime and self._parse_time(mtime)
         shared = False
@@ -1245,13 +1265,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return ret
 
-    def _drive_root(self, name, path=""):       # pylint:disable=no-self-use
-        return "/drives/%s/root:" % name + path
-
     def _join_parent_reference_path_and_name(self, pr_path, name):
         assert pr_path
         path = self.join(pr_path, name)
-        preambles = [r"/drive/root:", r"/me/drive/root:", r"/drives/.*?/root:"]
+        # TODO(root)-verify what this looks like for shared consumer folders
+        preambles = [r"/drive/root:", r"/me/drive/root:", r"/drives/.*?/root:", f"drives/{self.namespace.drive_id}/items/{self.namespace.root_oid}"]
 
         if ':' in path:
             found = False
@@ -1368,9 +1386,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 site = self.__site_by_id.get(ids.site_id)
                 if not site:
                     raise CloudNamespaceError(f"Unknown site id: {ns_id}")
-                self._fetch_drives_for_site(site)
-                drive = self.__drive_by_id.get(ns_id)
+                if site == self._shared_with_me and not ids.shared_folder_id and self._is_biz:
+                    # TODO(root)-backwards compatibility for shared folder namespaces with no shared id
+                    if next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None):
+                        drive = Drive(ns_id, "what should we call it?")
                 if not drive:
+                    self._fetch_drives_for_site(site)
+                    drive = self.__drive_by_id.get(ns_id)
+                if not drive:
+                    # TODO(root) - ent config?
                     # check if it is a shared drive
                     drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
                 if not drive:

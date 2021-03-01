@@ -371,7 +371,7 @@ def test_namespace_set():
     odp.namespace_id = personal_id
     assert odp.namespace_id == f'personal|{personal_id}'
 
-    shared_id = 'DRIVE_ID_20'
+    shared_id = 'DRIVE_ID_20|ITEM_ID_30'
     odp.namespace_id = f'personal|{shared_id}'
     assert odp.namespace_id == f'shared|{shared_id}'
 
@@ -453,11 +453,6 @@ def test_list_namespaces():
     assert shared.is_parent
     child_namespaces = odp.list_ns(parent=namespace_objs[1])
     assert len(child_namespaces) == 3
-    shared_paths = []
-    for child in child_namespaces:
-        assert child.shared_paths
-        shared_paths += child.shared_paths
-    assert shared_paths == shared.shared_paths
 
     # recursive
     api2, odp2 = fake_odp()
