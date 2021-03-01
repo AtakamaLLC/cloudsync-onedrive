@@ -152,7 +152,7 @@ class OneDriveItem:
             oid = "root"
 
         if oid == "root":
-            oid = prov.namespace.root_oid
+            oid = prov.namespace.api_root_oid
 
         self.__oid = oid
         self.__path = path
@@ -210,7 +210,7 @@ class OneDriveItem:
             return "/drives/%s/items/%s" % (self._drive_id, self.__oid)
         if self.__path:
             enc_path = urllib.parse.quote(self.__path)
-            return "/drives/%s/%s:%s" % (self._drive_id, self.__prov.namespace.root_path, enc_path)
+            return "/drives/%s/%s:%s" % (self._drive_id, self.__prov.namespace.api_root_path, enc_path)
         raise AssertionError("This should not happen, since __init__ verifies that there is one or the other")
 
     def get(self):
@@ -251,11 +251,11 @@ class Drive(Namespace):
         return bool(self.shared_folder_id)
 
     @property
-    def root_oid(self) -> str:
+    def api_root_oid(self) -> str:
         return self.shared_folder_id if self.shared_folder_id else "root"
 
     @property
-    def root_path(self) -> str:
+    def api_root_path(self) -> str:
         return f"items/{self.shared_folder_id}" if self.shared_folder_id else "root"
 
 
@@ -548,7 +548,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @memoize
     def _check_ns(self, nsid, conn_id_for_memo):                                 # pylint: disable=unused-argument
-        res = self._direct_api("get", "/drives/%s/items/%s" % (nsid, self.namespace.root_oid), raw_response=True)
+        res = self._direct_api("get", "/drives/%s/items/%s" % (nsid, self.namespace.api_root_oid), raw_response=True)
         return res.status_code < 300
 
     def _raise_converted_error(self, *, ex=None, req=None):      # pylint: disable=too-many-branches, too-many-statements
@@ -728,7 +728,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     @property
     def latest_cursor(self):
         # see: https://docs.microsoft.com/en-us/onedrive/developer/rest-api/api/driveitem_delta?view=odsp-graph-online#parameters
-        res = self._direct_api("get", f"/drives/{self._validated_namespace_id}/{self.namespace.root_path}/delta?token=latest")
+        res = self._direct_api("get", f"/drives/{self._validated_namespace_id}/{self.namespace.api_root_path}/delta?token=latest")
         return res.get('@odata.deltaLink')
 
     @property
@@ -1269,7 +1269,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         assert pr_path
         path = self.join(pr_path, name)
         # TODO(root)-verify what this looks like for shared consumer folders
-        preambles = [r"/drive/root:", r"/me/drive/root:", r"/drives/.*?/root:", f"drives/{self.namespace.drive_id}/items/{self.namespace.root_oid}"]
+        preambles = [r"/drive/root:", r"/me/drive/root:", r"/drives/.*?/root:", f"drives/{self.namespace.drive_id}/items/{self.namespace.api_root_oid}"]
 
         if ':' in path:
             found = False
