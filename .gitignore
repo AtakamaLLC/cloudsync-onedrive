@@ -126,3 +126,6 @@ venv.bak/
 
 # VS Code
 .vscode/
+
+# temp
+tests/test_local.py

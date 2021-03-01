@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.0.1"  # pragma: no cover
+__version__ = "3.0.1a1"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -252,12 +252,11 @@ class Drive(Namespace):
 
     @property
     def api_root_oid(self) -> str:
-        return self.shared_folder_id if self.shared_folder_id else "root"
+        return self.shared_folder_id if self.is_shared else "root"
 
     @property
     def api_root_path(self) -> str:
-        return f"items/{self.shared_folder_id}" if self.shared_folder_id else "root"
-
+        return f"items/{self.shared_folder_id}" if self.is_shared else "root"
 
     def __post_init__(self):
         if self.parent:
@@ -438,11 +437,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             ids = f"{self._shared_with_me.id}|{remote_item['parentReference']['driveId']}|{remote_item['id']}"
             url = remote_item["webUrl"]
-            split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
             shared = remote_item["shared"]
             shared_by = shared.get("sharedBy") or shared.get("owner")
             owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
             if self._is_biz:
+                # TODO(root)-reconsider parsing this URL? (note: sites within sites vs fodlers within sites)
+                split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
                 site_name = "Personal" if split_path[1] == "personal" else split_path[2]
             else:
                 site_name = "Personal"
@@ -1269,7 +1269,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         assert pr_path
         path = self.join(pr_path, name)
         # TODO(root)-verify what this looks like for shared consumer folders
-        preambles = [r"/drive/root:", r"/me/drive/root:", r"/drives/.*?/root:", f"drives/{self.namespace.drive_id}/items/{self.namespace.api_root_oid}"]
+        preambles = [r"/drive/root:", r"/me/drive/root:", r"/drives/.*?/root:", f"drives/{self.namespace.drive_id}/items/{self.namespace.api_root_oid}:"]
 
         if ':' in path:
             found = False
@@ -1386,15 +1386,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 site = self.__site_by_id.get(ids.site_id)
                 if not site:
                     raise CloudNamespaceError(f"Unknown site id: {ns_id}")
-                if site == self._shared_with_me and not ids.shared_folder_id and self._is_biz:
-                    # TODO(root)-backwards compatibility for shared folder namespaces with no shared id
+                if site == self._shared_with_me and not ids.is_shared and self._is_biz:
                     if next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None):
-                        drive = Drive(ns_id, "what should we call it?")
+                        # TODO(root)-api call for name?
+                        drive = Drive(name="some name?", id=ids.drive_id)
                 if not drive:
                     self._fetch_drives_for_site(site)
                     drive = self.__drive_by_id.get(ns_id)
                 if not drive:
-                    # TODO(root) - ent config?
+                    # TODO(root) - is ent config an issue on remove?
                     # check if it is a shared drive
                     drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
                 if not drive:
