@@ -430,6 +430,9 @@ def test_namespace_set_other():
 def test_list_namespaces():
     api, odp = fake_odp()
     namespace_objs = odp.list_ns(recursive=False)
+    assert namespace_objs[0].parent.name == "Personal"
+    # ensure there is no recursion in repr (Site has a list of Drives, Drive has a ref to parent Site)
+    assert repr(namespace_objs[0]).find("Site") == -1
     namespaces = [ns.name for ns in namespace_objs]
     assert len(namespaces) == 4
     # personal is always there
