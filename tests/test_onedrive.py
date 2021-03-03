@@ -430,6 +430,9 @@ def test_namespace_set_other():
 def test_list_namespaces():
     api, odp = fake_odp()
     namespace_objs = odp.list_ns(recursive=False)
+    assert namespace_objs[0].parent.name == "Personal"
+    # ensure there is no recursion in repr (Site has a list of Drives, Drive has a ref to parent Site)
+    assert repr(namespace_objs[0]).find("Site") == -1
     namespaces = [ns.name for ns in namespace_objs]
     assert len(namespaces) == 4
     # personal is always there
@@ -527,7 +530,13 @@ def test_connect_resiliency():
     with patch.object(OneDriveProvider, "_base_url", api.uri()):
         with patch.object(odp, '_direct_api', side_effect=direct_api_raises_errors):
             odp.reconnect()
-            log.info("namespaces: %s", odp.list_ns())
+            # personal namespace is the failsafe
+            namespaces = odp.list_ns()
+            assert namespaces[0].name == "Personal"
+            # namespace errors are saved and can be queried
+            errors = odp.list_ns(parent=Namespace("errors", "errors"))
+            assert len(errors) == 2
+
 
 def test_connect_raises_token_errors():
     api, odp = fake_odp()
