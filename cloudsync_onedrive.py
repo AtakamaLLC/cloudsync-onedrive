@@ -312,6 +312,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self._namespace: Optional[Drive] = None
         self._personal_drive: Site = Site("Personal", "personal")
         self._shared_with_me: Site = Site("Shared With Me", "shared")
+        self._namespace_errors: Site = Site("errors", "errors")
         self.__done_fetch_drive_list: bool = False
         self.__drive_by_id: Dict[str, Drive] = {}
         self.__site_by_id: Dict[str, Site] = {}
@@ -386,15 +387,19 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return res
 
-    def _safe_direct_api(self, path, method="get", default=None):
+    def _direct_api_error_trap(self, path, method="get", default=None):
         # wrapper for _direct_api that raises only connectivity errors - other errors are caught and logged
         try:
             return self._direct_api(method, path)
         except (CloudDisconnectedError, CloudTokenError, CloudTemporaryError):
             raise
         except Exception as e:
-            log.warning("%s failed with %s", path, repr(e))
+            self._save_namespace_error(f"{path} failed with {repr(e)}")
             return default
+
+    def _save_namespace_error(self, error: str):
+        d = Drive(id="", name=error, parent=self._namespace_errors)
+        log.warning(d.name)
 
     def _save_drive_info(self, parent, drive_json):
         try:
@@ -411,7 +416,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                           owner_type=owner_type)
             self.__drive_by_id[ids] = drive
         except Exception as e:
-            log.warning("Failed to parse drive json: %s %s", drive_json, repr(e))
+            self._save_namespace_error(f"Failed to parse drive json: {drive_json} {repr(e)}")
 
     def _save_shared_with_me_info(self, shared_json):
         try:
@@ -435,7 +440,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self.__drive_by_id[ids] = drive
             drive.paths.append("/" + "/".join(split_path[4:]))
         except Exception as e:
-            log.warning("Failed to parse shared folder json: %s %s", shared_json, repr(e))
+            self._save_namespace_error(f"Failed to parse drive json: {shared_json} {repr(e)}")
 
     def _fetch_personal_drives(self):
         try:
@@ -464,7 +469,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _fetch_shared_drives(self):
         # drive items from other drives shared with current user
-        shared = self._safe_direct_api("/me/drive/sharedWithMe", default={})
+        shared = self._direct_api_error_trap("/me/drive/sharedWithMe", default={})
         for item in shared.get("value", []):
             self._save_shared_with_me_info(item)
         if self._shared_with_me.drives:
@@ -473,7 +478,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _fetch_sites(self):
         # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
-        sites = self._safe_direct_api("/sites?search=*", default={}).get("value", [])
+        sites = self._direct_api_error_trap("/sites?search=*", default={}).get("value", [])
         sites.sort(key=lambda s: (s.get("displayName") or s.get("name", "")).lower())
         for site in sites:
             try:
@@ -483,11 +488,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     name = site.get("displayName") or site.get("name", "")
                     self.__site_by_id[site["id"]] = Site(name=name, id=site["id"])
             except Exception as e:
-                log.warning("failed to get site info: %s", repr(e))
+                self._save_namespace_error(f"Failed to parse site json: {site} {repr(e)}")
 
     def _fetch_drives_for_site(self, site: Site):
         if not site.is_cached:
-            drives = self._safe_direct_api(f"/sites/{site.id}/drives", default={}).get("value", [])
+            drives = self._direct_api_error_trap(f"/sites/{site.id}/drives", default={}).get("value", [])
             drives.sort(key=lambda sd: sd.get("name", "").lower())
             for drive in drives:
                 self._save_drive_info(site, drive)
@@ -497,6 +502,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if clear_cache:
             self._personal_drive.drives = []
             self._shared_with_me.drives = []
+            self._namespace_errors.drives = []
             self.__drive_by_id = {}
             self.__site_by_id = {}
             self.__done_fetch_drive_list = False
@@ -509,6 +515,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def list_ns(self, recursive: bool = True, parent: Namespace = None) -> List[Namespace]:
         namespaces: List[Namespace] = []
         if parent:
+            if parent.id == "errors":
+                return self._namespace_errors.drives
             self._fetch_drive_list()
             site = self.__site_by_id.get(parent.id)
             if site:
