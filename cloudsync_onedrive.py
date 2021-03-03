@@ -516,7 +516,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         namespaces: List[Namespace] = []
         if parent:
             if parent.id == "errors":
-                return self._namespace_errors.drives
+                namespaces += self._namespace_errors.drives
+                return namespaces
             self._fetch_drive_list()
             site = self.__site_by_id.get(parent.id)
             if site:
