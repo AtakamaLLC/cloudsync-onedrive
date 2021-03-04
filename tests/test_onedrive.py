@@ -236,6 +236,29 @@ class FakeGraphApi(FakeApi):
             if re.match(r"^/drives/[^/]+/$", uri):
                 return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity', 'id': 'bdd46067213df13', 'name': 'drive-name', 'driveType': 'personal', 'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}}, 'quota': {'deleted': 519205504, 'remaining': 1104878758982, 'state': 'normal', 'total': 1104880336896, 'used': 1577914}}
 
+            if uri.find("ITEM_ID_30") > 0:
+                return {
+                    "id": "ITEM_ID_30",
+                    "name": "from_personal",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
+                    "folder": {"childCount": 0},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_20",
+                        "driveType": "business",
+                        "id": "ITEM_ID_40"
+                    },
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
+                }
+
             err = ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": "whatever"}}) 
             log.debug("raising %s", err)
             raise err
