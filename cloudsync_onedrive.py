@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "2.2.6a11"  # pragma: no cover
+__version__ = "3.0.2"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -242,7 +242,6 @@ class Drive(Namespace):
     drive_id: str = ""
     shared_folder_id: str = ""
     shared_folder_path: str = ""
-    paths: List[str] = field(default_factory=list)
 
     @property
     def is_shared(self) -> bool:
@@ -287,13 +286,6 @@ class Site(Namespace):
     @property
     def is_cached(self) -> bool:
         return bool(self.drives)
-
-    @property
-    def shared_paths(self) -> List[str]:
-        paths = []
-        for drive in self.drives:
-            paths += drive.shared_paths
-        return paths
 
 
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
@@ -444,7 +436,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             shared_by = shared.get("sharedBy") or shared.get("owner")
             owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
             if self._is_biz:
-                # TODO(root)-reconsider parsing this URL? (note: sites within sites vs fodlers within sites)
                 split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
                 site_name = "Personal" if split_path[1] == "personal" else split_path[2]
             else:
@@ -1100,7 +1091,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _parse_time(time_str):
         try:
             if time_str:
-                ret_val = arrow.get(time_str).timestamp
+                ret_val = arrow.get(time_str).timestamp()
             else:
                 ret_val = 0
         except Exception as e:  # pragma: no cover
@@ -1113,7 +1104,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if root:
             path = self.join(root, name)
             path_orig = path
-            if self.namespace.shared_folder_path:
+            if self._is_biz and self.namespace.shared_folder_path:
                 # make path relative to the shared folder
                 path = self.is_subpath(self.namespace.shared_folder_path, path, strict=False) or path
         else:
@@ -1245,9 +1236,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         odi = OneDriveItem(self, oid=item.id, path=path, pid=pid)
 
-        path = odi.path
+        if path is None:
+            path = odi.path
         path_orig = path
-        if self.namespace.shared_folder_path:
+        if self._is_biz and self.namespace.shared_folder_path:
             # make path relative to the shared folder
             path = self.is_subpath(self.namespace.shared_folder_path, path) or path
 
@@ -1308,7 +1300,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         path = urllib.parse.unquote(path)
 
         if self._is_biz and self.namespace.is_shared:
-            # enterprise OneDrive: for shared folders, convert full path to relative path
+            # make path relative to the shared folder
             path = self.is_subpath(self.namespace.shared_folder_path, path) or path
 
         return path
