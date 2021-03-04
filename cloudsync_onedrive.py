@@ -1402,7 +1402,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             self._namespace = self.__drive_by_id.get(ns_id, Drive(name=ns_id, id=ns_id))
         log.info("USING NS name=%s id=%s - connected=%s", self.namespace.name, self.namespace_id, self.connected)
 
-    def _get_validated_namespace(self, ns_id: str):
+    def _get_validated_namespace(self, ns_id: str):  # pylint: disable=too-many-branches
         drive = self.__drive_by_id.get(ns_id)
         if not drive:
             self._fetch_drive_list()
@@ -1421,7 +1421,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     self._fetch_drives_for_site(site)
                     drive = self.__drive_by_id.get(ns_id)
                 if not drive:
-                    # TODO(root) - is ent config an issue on remove?
                     # check if it is a shared drive
                     drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
                 if not drive:
@@ -1434,8 +1433,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     if not api_drive:
                         raise CloudNamespaceError(f"Unknown drive id: {ns_id}")
                     drive = Drive(api_drive.get("name", "Personal"), ns_id)
-            else:
-                raise CloudNamespaceError(f"Malformed drive id: {ns_id}")
         return drive
 
     @classmethod
