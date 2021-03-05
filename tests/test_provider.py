@@ -1,12 +1,8 @@
 """Imported test suite"""
 
-import io
-import requests
 import cloudsync_onedrive
 from cloudsync.tests import *
-from unittest.mock import patch
-
-test_report_info = None
+from unittest.mock import patch, Mock
 
 
 def test_report_info_od(provider):
@@ -156,3 +152,109 @@ def test_event_filter_walk(provider):
             got_file_event = True
     assert got_folder_event
     assert got_file_event
+
+
+@pytest.fixture(name="shared_folder_prov")
+def shared_folder_prov_fixture(config_provider):
+    test_namespaces = {
+        "onedrive": Namespace("shared", "shared|dd7f222f46bac64|DD7F222F46BAC64!2041"),
+        "testodbiz": Namespace("shared", "shared|b!0qbetD5QrUuzjmOjNoPe9wisWTc1bHZIuI7oeRvpO9D-BYpMoKiQSbpE_LhFwA9V|01DZISLZE42SNUKE2EERB3RY6ODMX3KRZF"),
+    }
+    ns = test_namespaces.get(config_provider.name)
+    if ns:
+        with patch("cloudsync_onedrive.OneDriveProvider._test_namespace") as mock_test_namespace:
+            mock_test_namespace.__get__ = Mock(return_value=ns)
+            yield from mixin_provider(config_provider)
+
+
+def test_shared_folder_reconn(shared_folder_prov):
+    prov = shared_folder_prov
+    log.info("NS=%s", prov.namespace)
+    ns_id = prov.namespace_id
+    prov.disconnect()
+    prov.reconnect()
+    assert prov.namespace_id == ns_id
+
+
+def test_shared_folder_basic(shared_folder_prov):
+    prov = shared_folder_prov
+    log.info("NS=%s", prov.namespace)
+
+    # get_quota should return something - however, in most cases, used/remaining are 0
+    # (user has limited permissions, unable to stat the drive of another user)
+    assert prov.get_quota()
+
+    # prime events / cursor
+    for _ in prov.events():
+        pass
+
+    # create some dirs and files
+    r = prov.mkdir("/root")
+    s1 = prov.mkdir("/root/sub1")
+    s2 = prov.mkdir("/root/sub1/sub2")
+    assert r and s1 and s2
+    assert prov.exists_path("/root/sub1")
+    assert prov.info_oid(s2).path == "/root/sub1/sub2"
+    f1 = prov.create("/file1", BytesIO(b"file1")).oid
+    f2 = prov.create("/root/file2", BytesIO(b"file2")).oid
+    f3 = prov.create("/root/sub1/sub2/file3", BytesIO(b"file3")).oid
+    assert f1 and f2 and f3
+    assert prov.exists_oid(f3)
+    assert prov.info_path("/root/file2").oid == f2
+
+    # upload/download
+    up_small = prov.upload(f1, BytesIO(b""))
+    assert up_small.size == 0
+    down_small = BytesIO()
+    prov.download(f1, down_small)
+    assert len(down_small.getvalue()) == 0
+    up_large = prov.upload(f1, BytesIO(b"many-bytes" * 1000))
+    assert up_large.size == 10 * 1000
+    down_large = BytesIO()
+    prov.download(f1, down_large)
+    assert len(down_large.getvalue()) == 10 * 1000
+
+    # set sync root to a sub-folder of the namespace's root
+    root = prov.set_root("/root", r)
+    assert root == ("/root", r)
+
+    # test event filtering
+    event_oids = set()
+    for e in prov.events():
+        event_oids.add(e.oid)
+    # file1 is outside the sync root, expect its events to be filtered out
+    assert event_oids == {r, s1, s2, f2, f3}
+
+    # test walks
+    walk_oids = set()
+    for e in prov.walk("/"):
+        walk_oids.add(e.oid)
+    assert walk_oids == {r, s1, s2, f1, f2, f3}
+    walk_oids.clear()
+    for e in prov.walk_oid(s1):
+        walk_oids.add(e.oid)
+    assert walk_oids == {s2, f3}
+
+    # filesystem operations
+    prov.delete(f3)
+    prov.delete(s2)
+    prov.rename(s1, "/root/sub1-renamed")
+    ls_oids = set()
+    for ls in prov.listdir(r):
+        ls_oids.add(ls.oid)
+        if ls.oid == s2:
+            assert ls.path == "/root/sub1-renamed"
+    assert ls_oids == {s1, f2}
+    for _ in prov.listdir(s1):
+        # dir should be empty after delete of s2 and f3
+        assert False
+
+
+# def test_shared_folder_mkdirs(shared_folder_prov):
+#     prov = shared_folder_prov
+#     log.info("NS=%s", prov.namespace)
+#
+#     leaf_oid = prov.mkdirs("/root/sub1/sub2/sub3")
+#     assert prov.info_oid(leaf_oid)
+#     assert prov.info_path("/root")
+#     assert prov.info_path("/root/sub1/sub2")

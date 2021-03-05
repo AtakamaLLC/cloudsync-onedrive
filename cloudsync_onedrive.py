@@ -449,7 +449,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         except Exception as e:
             self._save_namespace_error(f"Failed to parse drive json: {shared_json} {repr(e)}")
 
-
     def _fetch_personal_drives(self):
         try:
             if self._personal_drive.drives:
@@ -617,11 +616,13 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def get_quota(self):
         dat = self._direct_api("get", f"/drives/{self.namespace.drive_id}")
         log.debug("my drive %s", dat)
+        total = dat.get("quota", {}).get("total", 0)
+        remaining = dat.get("quota", {}).get("remaining", 0)
         return {
-            'used': dat["quota"]["total"]-dat["quota"]["remaining"],
-            'limit': dat["quota"]["total"],
+            'used': total - remaining,
+            'limit': total,
             'login': self._personal_drive.drives[0].owner,
-            'drive_id': dat['id'],                # drive id
+            'drive_id': dat['id'],
         }
 
     def reconnect(self):
@@ -810,7 +811,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if not self._root_path:
             return EventFilter.PROCESS
 
-        state_path = self.sync_state.get_path(event.oid)
+        state_path = self.sync_state.get_path(event.oid) if self.sync_state else None
         prior_subpath = self.is_subpath_of_root(state_path)
         if not event.exists:
             # delete - ignore if not in state, or in state but is not subpath of root
