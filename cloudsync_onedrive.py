@@ -283,6 +283,13 @@ class Site(Namespace):
         return paths
 
 
+class _NamespaceErrors:
+    pass
+
+
+NamespaceErrors = _NamespaceErrors()
+
+
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
     case_sensitive = False
     default_sleep = 15
@@ -398,8 +405,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return default
 
     def _save_namespace_error(self, error: str):
-        d = Drive(id="", name=error, parent=self._namespace_errors)
-        log.warning(d.name)
+        _ = Drive(id="", name=error, parent=self._namespace_errors)
+        log.warning(error)
 
     def _save_drive_info(self, parent, drive_json):
         try:
@@ -440,7 +447,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self.__drive_by_id[ids] = drive
             drive.paths.append("/" + "/".join(split_path[4:]))
         except Exception as e:
-            self._save_namespace_error(f"Failed to parse drive json: {shared_json} {repr(e)}")
+            self._save_namespace_error(f"Failed to parse shared folder json: {shared_json} {repr(e)}")
 
     def _fetch_personal_drives(self):
         try:
@@ -515,7 +522,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def list_ns(self, recursive: bool = True, parent: Namespace = None) -> List[Namespace]:
         namespaces: List[Namespace] = []
         if parent:
-            if parent.id == "errors":
+            if isinstance(parent, _NamespaceErrors):
                 namespaces += self._namespace_errors.drives
                 return namespaces
             self._fetch_drive_list()
@@ -757,7 +764,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             log.debug("ignore event: drive root")
             return None
 
-        ts = arrow.get(change.get('lastModifiedDateTime', time.time())).float_timestamp
+        ts = arrow.get(change.get('lastModifiedDateTime')).float_timestamp
         oid = change.get('id')
         exists = not change.get('deleted')
 
@@ -1072,7 +1079,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _parse_time(time_str):
         try:
             if time_str:
-                ret_val = arrow.get(time_str).timestamp()
+                ret_val = arrow.get(time_str).timestamp
             else:
                 ret_val = 0
         except Exception as e:  # pragma: no cover
