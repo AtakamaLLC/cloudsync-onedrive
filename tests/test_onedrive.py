@@ -15,11 +15,12 @@ from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
 from cloudsync.sync.state import FILE, DIRECTORY
-from cloudsync_onedrive import OneDriveProvider, EventFilter
+from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors
 
 log = logging.getLogger(__name__)
 
 NEW_TOKEN = "weird-token-od"
+
 
 class FakeGraphApi(FakeApi):
     multiple_personal_drives = False
@@ -557,7 +558,7 @@ def test_connect_resiliency():
             namespaces = odp.list_ns()
             assert namespaces[0].name == "Personal"
             # namespace errors are saved and can be queried
-            errors = odp.list_ns(parent=Namespace("errors", "errors"))
+            errors = odp.list_ns(parent=NamespaceErrors)
             assert len(errors) == 2
 
 
