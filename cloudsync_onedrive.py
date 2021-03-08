@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.0.2"  # pragma: no cover
+__version__ = "3.1.0"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -288,11 +288,12 @@ class Site(Namespace):
         return bool(self.drives)
 
 
-class _NamespaceErrors:
+@dataclass
+class _NamespaceErrors(Namespace):
     pass
 
 
-NamespaceErrors = _NamespaceErrors()
+NamespaceErrors = _NamespaceErrors("", "")
 
 
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
