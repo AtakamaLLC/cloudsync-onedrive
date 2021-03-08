@@ -9,8 +9,6 @@ pytest-xdist
 diff-cover
 # from pyproject.toml
 cloudsync~=3.0.0
-# todo: remove when cloudsync is properly pinned to arrow~0.17.0
-arrow~=0.17.0
 onedrivesdk_fork
 quickxorhash
 dataclasses
