@@ -443,12 +443,14 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             shared = remote_item["shared"]
             shared_by = shared.get("sharedBy") or shared.get("owner")
             owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
+            folder_name = remote_item.get("name", "")
             if self._is_biz:
                 split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
                 site_name = "Personal" if split_path[1] == "personal" else split_path[2]
+                drive_name = split_path[3]
+                name = f"Shared/{owner}/{site_name}/{drive_name}/{folder_name}"
             else:
-                site_name = "Personal"
-            name = f"Shared/{owner}/{site_name}/{remote_item['name']}"
+                name = f"Shared/{owner}/Personal/{folder_name}"
             drive = Drive(name, ids,
                           parent=self._shared_with_me,
                           url=url,
@@ -1423,9 +1425,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if not site:
                     raise CloudNamespaceError(f"Unknown site id: {ns_id}")
                 if site == self._shared_with_me and not ids.is_shared and self._is_biz:
-                    if next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None):
-                        # TODO(root)-api call for name?
-                        drive = Drive(name="some name?", id=ids.drive_id)
+                    d = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
+                    if d:
+                        name = "/".join(d.name.split("/")[:-1])
+                        drive = Drive(name=name, id=ids.drive_id)
                 if not drive:
                     self._fetch_drives_for_site(site)
                     drive = self.__drive_by_id.get(ns_id)
