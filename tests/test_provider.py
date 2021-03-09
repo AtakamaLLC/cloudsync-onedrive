@@ -167,18 +167,13 @@ def shared_folder_prov_fixture(config_provider):
             yield from mixin_provider(config_provider)
 
 
-def test_shared_folder_reconn(shared_folder_prov):
+def test_shared_folder_basic(shared_folder_prov):
     prov = shared_folder_prov
     log.info("NS=%s", prov.namespace)
     ns_id = prov.namespace_id
     prov.disconnect()
     prov.reconnect()
     assert prov.namespace_id == ns_id
-
-
-def test_shared_folder_basic(shared_folder_prov):
-    prov = shared_folder_prov
-    log.info("NS=%s", prov.namespace)
 
     # get_quota should return something - however, in most cases, used/remaining are 0
     # (user has limited permissions, unable to stat the drive of another user)
@@ -190,8 +185,8 @@ def test_shared_folder_basic(shared_folder_prov):
 
     # create some dirs and files
     r = prov.mkdir("/root")
-    s1 = prov.mkdir("/root/sub1")
-    s2 = prov.mkdir("/root/sub1/sub2")
+    s2 = prov.mkdirs("/root/sub1/sub2")
+    s1 = prov.info_path("/root/sub1").oid
     assert r and s1 and s2
     assert prov.exists_path("/root/sub1")
     assert prov.info_oid(s2).path == "/root/sub1/sub2"
@@ -248,13 +243,3 @@ def test_shared_folder_basic(shared_folder_prov):
     for _ in prov.listdir(s1):
         # dir should be empty after delete of s2 and f3
         assert False
-
-
-# def test_shared_folder_mkdirs(shared_folder_prov):
-#     prov = shared_folder_prov
-#     log.info("NS=%s", prov.namespace)
-#
-#     leaf_oid = prov.mkdirs("/root/sub1/sub2/sub3")
-#     assert prov.info_oid(leaf_oid)
-#     assert prov.info_path("/root")
-#     assert prov.info_path("/root/sub1/sub2")
