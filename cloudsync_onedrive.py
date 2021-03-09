@@ -22,7 +22,7 @@ from typing import Generator, Optional, Dict, Any, Iterable, List, Set, Union, c
 import urllib.parse
 import webbrowser
 from base64 import b64encode
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 import time
 import requests
 import arrow
@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.0.0"  # pragma: no cover
+__version__ = "3.1.0"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -254,8 +254,13 @@ class Drive(Namespace):
             self.site_id = ids[0]
             self.drive_id = ids[1]
         else:
-            self.site_id = None
+            self.site_id = ""
             self.drive_id = self.id
+
+    def __repr__(self):
+        d = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "parent"}
+        d["parent"] = self.parent.name if self.parent else None
+        return str(d)
 
 
 @dataclass
@@ -276,6 +281,14 @@ class Site(Namespace):
         for drive in self.drives:
             paths += drive.shared_paths
         return paths
+
+
+@dataclass
+class _NamespaceErrors(Namespace):
+    pass
+
+
+NamespaceErrors = _NamespaceErrors("", "")
 
 
 class OneDriveProvider(Provider):         # pylint: disable=too-many-public-methods, too-many-instance-attributes
@@ -307,6 +320,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self._namespace: Optional[Drive] = None
         self._personal_drive: Site = Site("Personal", "personal")
         self._shared_with_me: Site = Site("Shared With Me", "shared")
+        self._namespace_errors: Site = Site("errors", "errors")
         self.__done_fetch_drive_list: bool = False
         self.__drive_by_id: Dict[str, Drive] = {}
         self.__site_by_id: Dict[str, Site] = {}
@@ -381,44 +395,74 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         return res
 
+    def _direct_api_error_trap(self, path, method="get", default=None):
+        # wrapper for _direct_api that raises only connectivity errors - other errors are caught and logged
+        try:
+            return self._direct_api(method, path)
+        except (CloudDisconnectedError, CloudTokenError, CloudTemporaryError):
+            raise
+        except Exception as e:
+            self._save_namespace_error(f"{path} failed with {repr(e)}")
+            return default
+
+    def _save_namespace_error(self, error: str):
+        _ = Drive(id="", name=error, parent=self._namespace_errors)
+        log.warning(error)
+
     def _save_drive_info(self, parent, drive_json):
-        ids = f"{parent.id}|{drive_json['id']}"
-        owner = drive_json.get("owner")
-        owner_type = list(owner)[0] if owner else ""
-        owner_id = owner[owner_type].get("id", "") if owner else ""
-        owner_name = owner[owner_type].get("displayName", "") if owner else ""
-        drive = Drive(f'{parent.name}/{drive_json.get("name", "Personal")}', ids,
-                      parent=parent,
-                      url=drive_json.get("webUrl"),
-                      owner=owner_name,
-                      owner_id=owner_id,
-                      owner_type=owner_type)
-        self.__drive_by_id[ids] = drive
+        try:
+            ids = f"{parent.id}|{drive_json['id']}"
+            owner = drive_json.get("owner")
+            owner_type = list(owner)[0] if owner else ""
+            owner_id = owner[owner_type].get("id", "") if owner else ""
+            owner_name = owner[owner_type].get("displayName", "") if owner else ""
+            drive = Drive(f'{parent.name}/{drive_json.get("name", "Personal")}', ids,
+                          parent=parent,
+                          url=drive_json.get("webUrl"),
+                          owner=owner_name,
+                          owner_id=owner_id,
+                          owner_type=owner_type)
+            self.__drive_by_id[ids] = drive
+        except Exception as e:
+            self._save_namespace_error(f"Failed to parse drive json: {drive_json} {repr(e)}")
 
     def _save_shared_with_me_info(self, shared_json):
-        ids = f"{self._shared_with_me.id}|{shared_json['remoteItem']['parentReference']['driveId']}"
-        url = shared_json["webUrl"]
-        split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
-        drive = self.__drive_by_id.get(ids)
-        if not drive:
-            shared_by = shared_json["remoteItem"]["shared"]["sharedBy"]
-            owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
-            site_name = "Personal" if split_path[1] == "personal" else split_path[2]
-            name = f"Shared/{owner}/{site_name}/{split_path[3]}"
-            drive = Drive(name, ids,
-                          parent=self._shared_with_me,
-                          url=url,
-                          owner=owner)
-            self.__drive_by_id[ids] = drive
-        drive.paths.append("/" + "/".join(split_path[4:]))
+        try:
+            if "folder" not in shared_json:
+                # we only care about shared folders, not files
+                return
+
+            ids = f"{self._shared_with_me.id}|{shared_json['remoteItem']['parentReference']['driveId']}"
+            url = shared_json["webUrl"]
+            split_path = urllib.parse.unquote_plus(urllib.parse.urlparse(url).path).split('/')
+            drive = self.__drive_by_id.get(ids)
+            if not drive:
+                shared_by = shared_json["remoteItem"]["shared"]["sharedBy"]
+                owner = (shared_by.get("user") or shared_by.get("group", {})).get("displayName")
+                site_name = "Personal" if split_path[1] == "personal" else split_path[2]
+                name = f"Shared/{owner}/{site_name}/{split_path[3]}"
+                drive = Drive(name, ids,
+                              parent=self._shared_with_me,
+                              url=url,
+                              owner=owner)
+                self.__drive_by_id[ids] = drive
+            drive.paths.append("/" + "/".join(split_path[4:]))
+        except Exception as e:
+            self._save_namespace_error(f"Failed to parse shared folder json: {shared_json} {repr(e)}")
 
     def _fetch_personal_drives(self):
-        # personal drive: "most users will only have a single drive resource" - Microsoft
-        # see: https://docs.microsoft.com/en-us/graph/api/drive-list?view=graph-rest-1.0&tabs=http
         try:
+            if self._personal_drive.drives:
+                return
+
+            # personal drive: "most users will only have a single drive resource" - Microsoft
+            # see: https://docs.microsoft.com/en-us/graph/api/drive-list?view=graph-rest-1.0&tabs=http
+            # we require at least one personal drive, but some users could have multiple
             drives = self._direct_api("get", "/me/drives")["value"]
             for drive in drives:
                 self._save_drive_info(self._personal_drive, drive)
+            if not self._personal_drive.drives:
+                raise RuntimeError("no personal drive")
             if len(self._personal_drive.drives) == 1:
                 self._personal_drive.drives[0].name = "Personal"
             else:
@@ -433,20 +477,16 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _fetch_shared_drives(self):
         # drive items from other drives shared with current user
-        shared = self._direct_api("get", "/me/drive/sharedWithMe")
+        shared = self._direct_api_error_trap("/me/drive/sharedWithMe", default={})
         for item in shared.get("value", []):
-            try:
-                if "folder" in item:
-                    self._save_shared_with_me_info(item)
-            except Exception as e:
-                log.warning("failed to get shared item info: %s %s", repr(e), item)  # pragma: no cover
+            self._save_shared_with_me_info(item)
         if self._shared_with_me.drives:
             self._shared_with_me.drives.sort(key=lambda d: d.name.lower())
             self.__site_by_id[self._shared_with_me.id] = self._shared_with_me
 
     def _fetch_sites(self):
         # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
-        sites = self._direct_api("get", "/sites?search=*").get("value", [])
+        sites = self._direct_api_error_trap("/sites?search=*", default={}).get("value", [])
         sites.sort(key=lambda s: (s.get("displayName") or s.get("name", "")).lower())
         for site in sites:
             try:
@@ -456,23 +496,21 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     name = site.get("displayName") or site.get("name", "")
                     self.__site_by_id[site["id"]] = Site(name=name, id=site["id"])
             except Exception as e:
-                log.warning("failed to get site info: %s", repr(e))
+                self._save_namespace_error(f"Failed to parse site json: {site} {repr(e)}")
 
     def _fetch_drives_for_site(self, site: Site):
         if not site.is_cached:
-            try:
-                drives = self._direct_api("get", f"/sites/{site.id}/drives").get("value", [])
-                drives.sort(key=lambda sd: sd["name"].lower())
-                for drive in drives:
-                    self._save_drive_info(site, drive)
-            except Exception as e:
-                log.warning("failed to get site drive info: %s", repr(e))
+            drives = self._direct_api_error_trap(f"/sites/{site.id}/drives", default={}).get("value", [])
+            drives.sort(key=lambda sd: sd.get("name", "").lower())
+            for drive in drives:
+                self._save_drive_info(site, drive)
         return site.drives
 
     def _fetch_drive_list(self, clear_cache: bool = False):
         if clear_cache:
             self._personal_drive.drives = []
             self._shared_with_me.drives = []
+            self._namespace_errors.drives = []
             self.__drive_by_id = {}
             self.__site_by_id = {}
             self.__done_fetch_drive_list = False
@@ -485,6 +523,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def list_ns(self, recursive: bool = True, parent: Namespace = None) -> List[Namespace]:
         namespaces: List[Namespace] = []
         if parent:
+            if isinstance(parent, _NamespaceErrors):
+                namespaces += self._namespace_errors.drives
+                return namespaces
             self._fetch_drive_list()
             site = self.__site_by_id.get(parent.id)
             if site:
@@ -575,7 +616,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def get_quota(self):
         dat = self._direct_api("get", f"/drives/{self.namespace.drive_id}")
-        self.__cached_is_biz = dat["driveType"] != 'personal'
         log.debug("my drive %s", dat)
         return {
             'used': dat["quota"]["total"]-dat["quota"]["remaining"],
@@ -646,6 +686,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self._creds = creds
 
         self._fetch_personal_drives()
+        # validate namespace if specified, default to personal drive if not
         self.namespace_id = self.namespace_id or self._personal_drive.drives[0].id
         return self._personal_drive.drives[0].drive_id
 
@@ -1327,36 +1368,39 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self._namespace = None
         if self.connected:
             # validate
-            self._fetch_drive_list()
-            drive = self.__drive_by_id.get(ns_id)
-            if not drive:
-                ids = Drive(ns_id, ns_id)
-                if ids.site_id:
-                    site = self.__site_by_id.get(ids.site_id)
-                    if not site:
-                        raise CloudNamespaceError(f"Unknown site id: {ns_id}")
-                    self._fetch_drives_for_site(site)
-                    drive = self.__drive_by_id.get(ns_id)
-                    if not drive:
-                        # check if it is a shared drive
-                        drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
-                    if not drive:
-                        raise CloudNamespaceError(f"Site does not contain drive: {ns_id}")
-                elif ids.drive_id:
-                    if ids.drive_id == self._personal_drive.drives[0].drive_id:
-                        drive = self._personal_drive.drives[0]
-                    else:
-                        api_drive = self._direct_api("get", f"/drives/{ids.drive_id}/")
-                        if not api_drive:
-                            raise CloudNamespaceError(f"Unknown drive id: {ns_id}")
-                        drive = Drive(api_drive.get("name", "Personal"), ns_id)
-                else:
-                    raise CloudNamespaceError(f"Malformed drive id: {ns_id}")
-            self._namespace = drive
+            self._namespace = self._get_validated_namespace(ns_id)
         else:
             # defer validation until a connection is established
             self._namespace = self.__drive_by_id.get(ns_id, Drive(name=ns_id, id=ns_id))
         log.info("USING NS name=%s id=%s - connected=%s", self.namespace.name, self.namespace_id, self.connected)
+
+    def _get_validated_namespace(self, ns_id: str):
+        drive = self.__drive_by_id.get(ns_id)
+        if not drive:
+            self._fetch_drive_list()
+            drive = self.__drive_by_id.get(ns_id)
+        if not drive:
+            ids = Drive(ns_id, ns_id)
+            if ids.site_id:
+                site = self.__site_by_id.get(ids.site_id)
+                if not site:
+                    raise CloudNamespaceError(f"Unknown site id: {ns_id}")
+                self._fetch_drives_for_site(site)
+                drive = self.__drive_by_id.get(ns_id)
+                if not drive:
+                    # check if it is a shared drive
+                    drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
+                if not drive:
+                    raise CloudNamespaceError(f"Site does not contain drive: {ns_id}")
+            elif ids.drive_id:
+                if ids.drive_id == self._personal_drive.drives[0].drive_id:
+                    drive = self._personal_drive.drives[0]
+                else:
+                    api_drive = self._direct_api("get", f"/drives/{ids.drive_id}/")
+                    drive = Drive(api_drive.get("name", "Personal"), ns_id)
+            else:
+                raise CloudNamespaceError(f"Malformed drive id: {ns_id}")
+        return drive
 
     @classmethod
     def test_instance(cls):

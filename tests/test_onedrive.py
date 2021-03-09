@@ -10,16 +10,17 @@ from unittest.mock import patch, call
 import pytest
 
 from onedrivesdk_fork.error import ErrorCode
-from cloudsync.exceptions import CloudNamespaceError, CloudTokenError, CloudFileNotFoundError
+from cloudsync.exceptions import CloudNamespaceError, CloudTokenError, CloudFileNotFoundError, CloudDisconnectedError
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
 from cloudsync.sync.state import FILE, DIRECTORY
-from cloudsync_onedrive import OneDriveProvider, EventFilter
+from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site
 
 log = logging.getLogger(__name__)
 
 NEW_TOKEN = "weird-token-od"
+
 
 class FakeGraphApi(FakeApi):
     multiple_personal_drives = False
@@ -430,6 +431,9 @@ def test_namespace_set_other():
 def test_list_namespaces():
     api, odp = fake_odp()
     namespace_objs = odp.list_ns(recursive=False)
+    assert namespace_objs[0].parent.name == "Personal"
+    # ensure there is no recursion in repr (Site has a list of Drives, Drive has a ref to parent Site)
+    assert repr(namespace_objs[0]).find("Site") == -1
     namespaces = [ns.name for ns in namespace_objs]
     assert len(namespaces) == 4
     # personal is always there
@@ -443,7 +447,7 @@ def test_list_namespaces():
     # protals are ignored
     assert "Community" not in namespaces
     # site fetch done once in connect() and again in list_ns()
-    assert len(api.calls["_fetch_sites"]) == 2
+    assert len(api.calls["_fetch_sites"]) == 1
     # personal has no children
     personal = namespace_objs[0]
     assert not personal.is_parent
@@ -463,7 +467,7 @@ def test_list_namespaces():
     api2, odp2 = fake_odp()
     namespaces = odp2.list_ns(recursive=True)
     # fetch additional info for 2 sites
-    assert len(api2.calls["_fetch_sites"]) == 4
+    assert len(api2.calls["_fetch_sites"]) == 3
 
     # parent
     site = Namespace(name="name", id="site-id-1")
@@ -514,3 +518,79 @@ def test_walk_filtered_directory():
             # should not raise
             for _ in odp._walk_filtered_directory("oid4", history):
                 pass
+
+def test_connect_resiliency():
+    api, odp = fake_odp()
+    odp.disconnect()
+    odp._creds = {"access_token": "t", "refresh": "r"}
+    direct_api_og = odp._direct_api
+
+    def direct_api_raises_errors(action, path: str):
+        if path.find("sites?search=*") > -1:
+            raise Exception("no sites for you")
+        if path.find("me/drive/sharedWithMe") > -1:
+            raise Exception("no sharing")
+        return direct_api_og(action, path)
+
+    # ensure non-connectivity errors are ignored
+    with patch.object(OneDriveProvider, "_base_url", api.uri()):
+        with patch.object(odp, '_direct_api', side_effect=direct_api_raises_errors):
+            odp.reconnect()
+            # personal namespace is the failsafe
+            namespaces = odp.list_ns()
+            assert namespaces[0].name == "Personal"
+            # namespace errors are saved and can be queried
+            errors = odp.list_ns(parent=NamespaceErrors)
+            assert len(errors) == 2
+
+
+def test_connect_raises_token_errors():
+    api, odp = fake_odp()
+    odp.disconnect()
+    odp._creds = {"access_token": "t", "refresh": "r"}
+    direct_api_og = odp._direct_api
+
+    def direct_api_raises_errors(action, path: str):
+        if path.find("sites?search=*") > -1:
+            raise CloudTokenError("bad token")
+        if path.find("me/drive/sharedWithMe") > -1:
+            raise CloudTokenError("really bad token")
+        return direct_api_og(action, path)
+
+    # ensure connectivity errors bubble up
+    with patch.object(OneDriveProvider, "_base_url", api.uri()):
+        with patch.object(odp, '_direct_api', side_effect=direct_api_raises_errors):
+            odp.reconnect()
+            with pytest.raises(CloudTokenError):
+                odp.list_ns()
+
+
+def test_connect_exception_handling():
+    api, odp = fake_odp()
+    error_index = 0
+
+    # bad drive json
+    odp._save_drive_info(Site("", ""), {})
+    assert odp.list_ns(parent=NamespaceErrors)[error_index].name.find("KeyError('id'") > 0
+    error_index += 1
+
+    # bad shared folder json
+    odp._save_shared_with_me_info({"folder": 0})
+    assert odp.list_ns(parent=NamespaceErrors)[error_index].name.find("KeyError('remoteItem'") > 0
+    error_index += 1
+
+    # bad site json
+    with patch.object(odp, "_direct_api_error_trap", return_value={"value": [{}]}):
+        odp._fetch_sites()
+        assert odp.list_ns(parent=NamespaceErrors)[error_index].name.find("KeyError('webUrl'") > 0
+        error_index += 1
+
+    # missing personal drive
+    with patch.object(odp, "_personal_drive", Site("", "")):
+        with patch.object(odp, "_direct_api", return_value={"value": []}):
+            with pytest.raises(CloudTokenError):
+                odp._fetch_personal_drives()
+
+    # malformed namespace id
+    with pytest.raises(CloudNamespaceError):
+        odp._get_validated_namespace("")
