@@ -260,12 +260,9 @@ class Drive(Namespace):
             self.parent.drives.append(self)
         ids = self.id.split("|")
         if len(ids) == 2:
-            self.site_id = ids[0]
-            self.drive_id = ids[1]
+            (self.site_id, self.drive_id) = ids
         elif len(ids) == 3:
-            self.site_id = ids[0]
-            self.drive_id = ids[1]
-            self.shared_folder_id = ids[2]
+            (self.site_id, self.drive_id, self.shared_folder_id) = ids
         else:
             self.drive_id = self.id
 
@@ -508,7 +505,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self._save_namespace_error(f"Failed to parse site json: {site} {repr(e)}")
 
     def _fetch_drives_for_site(self, site: Site):
-        if not site.is_cached:
+        # only sharepoint sites are lazy-loaded because they require one API hit per site
+        # (a user could have access to a large number of sites)
+        needs_fetch = site not in [self._personal_drive, self._shared_with_me] and not site.is_cached
+        if needs_fetch:
             drives = self._direct_api_error_trap(f"/sites/{site.id}/drives", default={}).get("value", [])
             drives.sort(key=lambda sd: sd.get("name", "").lower())
             for drive in drives:
@@ -1423,21 +1423,19 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 site = self.__site_by_id.get(ids.site_id)
                 if not site:
                     raise CloudNamespaceError(f"Unknown site id: {ns_id}")
-                # check shared drives
-                drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
-                if drive and site == self._shared_with_me and not ids.is_shared and self._is_biz:
-                    # support for the old way of using shared folders (ODB-only)
-                    name = "/".join(drive.name.split("/")[:-1])
-                    drive = Drive(name=name, id=ns_id)
+                self._fetch_drives_for_site(site)
+                drive = self.__drive_by_id.get(ns_id)
                 if not drive:
-                    self._fetch_drives_for_site(site)
-                    drive = self.__drive_by_id.get(ns_id)
+                    drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
+                    if drive and site == self._shared_with_me and not ids.is_shared and self._is_biz:
+                        # support for the old way of using shared folders - no folder id (ODB-only)
+                        name = "/".join(drive.name.split("/")[:-1])
+                        drive = Drive(name=name, id=ns_id)
                 if not drive:
                     raise CloudNamespaceError(f"Site does not contain drive: {ns_id}")
             elif ids.drive_id:
-                if ids.drive_id == self._personal_drive.drives[0].drive_id:
-                    drive = self._personal_drive.drives[0]
-                else:
+                drive = next((d for d in self._personal_drive.drives if d.drive_id == ids.drive_id), None)
+                if not drive:
                     api_drive = self._direct_api("get", f"/drives/{ids.drive_id}/")
                     drive = Drive(api_drive.get("name", "Personal"), ns_id)
             else:
