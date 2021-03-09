@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.1.0"  # pragma: no cover
+__version__ = "3.1.1"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -438,6 +438,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 # we only care about shared folders, not shared files
                 return
 
+            # TODO: check cache?
             ids = f"{self._shared_with_me.id}|{remote_item['parentReference']['driveId']}|{remote_item['id']}"
             url = remote_item["webUrl"]
             shared = remote_item["shared"]
@@ -1433,6 +1434,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     self._fetch_drives_for_site(site)
                     drive = self.__drive_by_id.get(ns_id)
                 if not drive:
+                    # TODO: ent config?
                     # check if it is a shared drive
                     drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
                 if not drive:
@@ -1442,9 +1444,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     drive = self._personal_drive.drives[0]
                 else:
                     api_drive = self._direct_api("get", f"/drives/{ids.drive_id}/")
-                    if not api_drive:
-                        raise CloudNamespaceError(f"Unknown drive id: {ns_id}")
                     drive = Drive(api_drive.get("name", "Personal"), ns_id)
+            else:
+                raise CloudNamespaceError(f"Malformed drive id: {ns_id}")
         return drive
 
     @classmethod

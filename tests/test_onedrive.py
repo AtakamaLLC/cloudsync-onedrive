@@ -15,7 +15,7 @@ from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
 from cloudsync.sync.state import FILE, DIRECTORY
-from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors
+from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site
 
 log = logging.getLogger(__name__)
 
@@ -581,3 +581,33 @@ def test_connect_raises_token_errors():
             odp.reconnect()
             with pytest.raises(CloudTokenError):
                 odp.list_ns()
+
+def test_connect_exception_handling():
+    api, odp = fake_odp()
+    error_index = 0
+
+    # bad drive json
+    odp._save_drive_info(Site("", ""), {})
+    assert odp.list_ns(parent=NamespaceErrors)[error_index].name.find("KeyError('id'") > 0
+    error_index += 1
+
+    # bad shared folder json
+    odp._save_shared_with_me_info({"remoteItem": {"folder": 0}})
+    assert odp.list_ns(parent=NamespaceErrors)[error_index].name.find("KeyError('parentReference'") > 0
+    error_index += 1
+
+    # bad site json
+    with patch.object(odp, "_direct_api_error_trap", return_value={"value": [{}]}):
+        odp._fetch_sites()
+        assert odp.list_ns(parent=NamespaceErrors)[error_index].name.find("KeyError('webUrl'") > 0
+        error_index += 1
+
+    # missing personal drive
+    with patch.object(odp, "_personal_drive", Site("", "")):
+        with patch.object(odp, "_direct_api", return_value={"value": []}):
+            with pytest.raises(CloudTokenError):
+                odp._fetch_personal_drives()
+
+    # malformed namespace id
+    with pytest.raises(CloudNamespaceError):
+        odp._get_validated_namespace("")
