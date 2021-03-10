@@ -237,7 +237,7 @@ def test_shared_folder_basic(shared_folder_prov):
     ls_oids = set()
     for ls in prov.listdir(r):
         ls_oids.add(ls.oid)
-        if ls.oid == s2:
+        if ls.oid == s1:
             assert ls.path == "/root/sub1-renamed"
     assert ls_oids == {s1, f2}
     for _ in prov.listdir(s1):
