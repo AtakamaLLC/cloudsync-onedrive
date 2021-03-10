@@ -582,6 +582,7 @@ def test_connect_raises_token_errors():
             with pytest.raises(CloudTokenError):
                 odp.list_ns()
 
+
 def test_connect_exception_handling():
     api, odp = fake_odp()
     error_index = 0
