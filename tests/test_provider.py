@@ -243,3 +243,16 @@ def test_shared_folder_basic(shared_folder_prov):
     for _ in prov.listdir(s1):
         # dir should be empty after delete of s2 and f3
         assert False
+
+    # backwards compatibility for legacy shared folder namespaces (ODB only)
+    legacy_ns_id = ns_id[0:ns_id.rfind("|")]
+    if prov._is_biz:
+        expected_ns_name = prov.namespace.name[0:prov.namespace.name.rfind("/")]
+        prov.namespace_id = legacy_ns_id
+        assert prov.namespace.name == expected_ns_name
+        assert not prov.namespace.is_shared
+    else:
+        with pytest.raises(CloudNamespaceError):
+            prov.namespace_id = legacy_ns_id
+        # put it back to make test teardown happy
+        prov.namespace_id = ns_id

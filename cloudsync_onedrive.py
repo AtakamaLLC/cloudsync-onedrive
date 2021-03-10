@@ -1425,10 +1425,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     raise CloudNamespaceError(f"Unknown site id: {ns_id}")
                 self._fetch_drives_for_site(site)
                 drive = self.__drive_by_id.get(ns_id)
-                if not drive:
+                if not drive and site == self._shared_with_me and not ids.is_shared and self._is_biz:
+                    # backwards compatibility for legacy shared folder namespaces (ODB only)
                     drive = next((d for d in self._shared_with_me.drives if d.drive_id == ids.drive_id), None)
-                    if drive and site == self._shared_with_me and not ids.is_shared and self._is_biz:
-                        # support for the old way of using shared folders - no folder id (ODB-only)
+                    if drive:
                         name = "/".join(drive.name.split("/")[:-1])
                         drive = Drive(name=name, id=ns_id)
                 if not drive:

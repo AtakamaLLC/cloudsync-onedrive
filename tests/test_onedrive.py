@@ -396,7 +396,7 @@ def test_namespace_set():
     assert odp.namespace_id == f'personal|{personal_id}'
 
     shared_id = 'DRIVE_ID_20|ITEM_ID_30'
-    odp.namespace_id = f'personal|{shared_id}'
+    odp.namespace_id = f'shared|{shared_id}'
     assert odp.namespace_id == f'shared|{shared_id}'
 
     site = Namespace(name="site-id-1", id="site-id-1")
