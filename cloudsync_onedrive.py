@@ -1109,16 +1109,18 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             ret_val = 0
         return ret_val
 
+    def _make_path_relative_to_shared_folder_if_needed(self, path):
+        if self._is_biz and self.namespace and self.namespace.is_shared:
+            path = self.is_subpath(self.namespace.shared_folder_path, path) or path
+        return path
+
     def _info_from_rest(self, item, root=None):
-        name = item["name"]
-        if root:
-            path = self.join(root, name)
-            path_orig = path
-            if self._is_biz and self.namespace.shared_folder_path:
-                # make path relative to the shared folder
-                path = self.is_subpath(self.namespace.shared_folder_path, path, strict=False) or path
-        else:
+        if not root:
             raise NotImplementedError()
+
+        name = item["name"]
+        path_orig = self.join(root, name)
+        path = self._make_path_relative_to_shared_folder_if_needed(path_orig)
 
         iid = item["id"]
         ohash = None
@@ -1130,7 +1132,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             ohash = self._hash_from_dict(item)
 
         pid = item["parentReference"].get("id")
-        name = item["name"]
         size = item.get("size", 0)
         mtime = item["lastModifiedDateTime"]
         mtime = mtime and self._parse_time(mtime)
@@ -1243,16 +1244,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 ohash = item.file.hashes.to_dict()["sha1Hash"]
 
         pid = item.parent_reference.id
-
         odi = OneDriveItem(self, oid=item.id, path=path, pid=pid)
-
-        if path is None:
-            path = odi.path
-        path_orig = path
-        if self._is_biz and self.namespace.shared_folder_path:
-            # make path relative to the shared folder
-            path = self.is_subpath(self.namespace.shared_folder_path, path) or path
-
+        path_orig = path or odi.path
+        path = self._make_path_relative_to_shared_folder_if_needed(path_orig)
         mtime = item.last_modified_date_time
         mtime = mtime and self._parse_time(mtime)
 
@@ -1307,12 +1301,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     break
             if not found:
                 raise Exception("path '%s'(%s, %s) does not start with '%s', maybe implement recursion?" % (path, pr_path, name, preambles))
+
         path = urllib.parse.unquote(path)
-
-        if self._is_biz and self.namespace.is_shared:
-            # make path relative to the shared folder
-            path = self.is_subpath(self.namespace.shared_folder_path, path) or path
-
+        path = self._make_path_relative_to_shared_folder_if_needed(path)
         return path
 
     def _get_item(self, client, *, oid=None, path=None):
