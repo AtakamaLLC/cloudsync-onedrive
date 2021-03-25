@@ -240,9 +240,8 @@ def test_shared_folder_basic(shared_folder_prov):
         if ls.oid == s1:
             assert ls.path == "/root/sub1-renamed"
     assert ls_oids == {s1, f2}
-    for _ in prov.listdir(s1):
-        # dir should be empty after delete of s2 and f3
-        assert False
+    # dir should be empty after delete of s2 and f3
+    assert not list(prov.listdir(s1))
 
     # backwards compatibility for legacy shared folder namespaces (ODB only)
     legacy_ns_id = ns_id[0:ns_id.rfind("|")]
