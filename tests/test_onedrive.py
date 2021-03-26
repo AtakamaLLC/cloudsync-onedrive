@@ -237,6 +237,29 @@ class FakeGraphApi(FakeApi):
             if re.match(r"^/drives/[^/]+/$", uri):
                 return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity', 'id': 'bdd46067213df13', 'name': 'drive-name', 'driveType': 'personal', 'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}}, 'quota': {'deleted': 519205504, 'remaining': 1104878758982, 'state': 'normal', 'total': 1104880336896, 'used': 1577914}}
 
+            if uri.find("ITEM_ID_30") > 0:
+                return {
+                    "id": "ITEM_ID_30",
+                    "name": "from_personal",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
+                    "folder": {"childCount": 0},
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_20",
+                        "driveType": "business",
+                        "id": "ITEM_ID_40"
+                    },
+                    "shared": {
+                        "scope": "users",
+                        "sharedDateTime": "2020-05-07T20:39:38Z",
+                        "sharedBy": {
+                            "user": {
+                                "email": "sharer@test.onmicrosoft.com",
+                                "displayName": "Stephen Sharer"
+                            }
+                        }
+                    }
+                }
+
             err = ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": "whatever"}}) 
             log.debug("raising %s", err)
             raise err
@@ -372,8 +395,8 @@ def test_namespace_set():
     odp.namespace_id = personal_id
     assert odp.namespace_id == f'personal|{personal_id}'
 
-    shared_id = 'DRIVE_ID_20'
-    odp.namespace_id = f'personal|{shared_id}'
+    shared_id = 'DRIVE_ID_20|ITEM_ID_30'
+    odp.namespace_id = f'shared|{shared_id}'
     assert odp.namespace_id == f'shared|{shared_id}'
 
     site = Namespace(name="site-id-1", id="site-id-1")
@@ -457,11 +480,6 @@ def test_list_namespaces():
     assert shared.is_parent
     child_namespaces = odp.list_ns(parent=namespace_objs[1])
     assert len(child_namespaces) == 3
-    shared_paths = []
-    for child in child_namespaces:
-        assert child.shared_paths
-        shared_paths += child.shared_paths
-    assert shared_paths == shared.shared_paths
 
     # recursive
     api2, odp2 = fake_odp()
@@ -575,8 +593,8 @@ def test_connect_exception_handling():
     error_index += 1
 
     # bad shared folder json
-    odp._save_shared_with_me_info({"folder": 0})
-    assert odp.list_ns(parent=NamespaceErrors)[error_index].name.find("KeyError('remoteItem'") > 0
+    odp._save_shared_with_me_info({"remoteItem": {"folder": 0}})
+    assert odp.list_ns(parent=NamespaceErrors)[error_index].name.find("KeyError('parentReference'") > 0
     error_index += 1
 
     # bad site json
