@@ -781,6 +781,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         ts = arrow.get(change.get('lastModifiedDateTime')).float_timestamp
         oid = change.get('id')
+
+        # See:  https://docs.microsoft.com/en-us/graph/api/resources/deleted?view=graph-rest-1.0
+        # Note that the "deleted" resource can return an empty dict, for example when a shared folder is "removed"
+        # by the sharee -- still means the item was deleted in this case (the event does not contain a parent path).
+        # In most cases the "delete" resource returns a dict containing a state:{ "state": "softDeleted" }
         exists = change.get('deleted') is None
 
         fil = change.get('file')
