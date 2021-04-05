@@ -682,26 +682,29 @@ def test_connect_exception_handling():
 def test_convert_to_event():
     _, odp = fake_odp()
 
-    event_dict = {'@odata.type': '#microsoft.graph.driveItem', 'createdDateTime': '2021-02-02T17:45:01.2948881Z',
-                  'cTag': 'adDpERDdGMjIyRjQ2QkFDNjQhMTgzNy42Mzc1MjgxODE0MjUyMDAwMDA',
-                  'eTag': 'aREQ3RjIyMkY0NkJBQzY0ITE4MzcuMTg',
-                  'id': '31123222F46BAC64!1837', 'lastModifiedDateTime': '2021-03-31T20:09:02.52Z',
-                  'name': 'SharingTest',
-                  'webUrl': 'https://1drv.ms/u/s!AABKS6vQU89_bA',
-                  'lastModifiedBy': {'user': {'displayName': 'Sharee', 'id': '09876bac64'}},
-                  'parentReference': {'driveId': '78612318bac64', 'driveType': 'personal', 'id': '09183471C64!103'},
-                  'deleted': {},
-                  'remoteItem': {'id': '731498DCD3AB4B4A00!108', 'size': 0,
-                                 'webUrl': 'https://1drv.ms/u/s!AABKJA6vT0AR_bA',
-                                 'fileSystemInfo': {'createdDateTime': '0001-01-01T08:00:00Z',
-                                                    'lastModifiedDateTime': '0001-01-01T08:00:00Z'},
-                                 'folder': {'childCount': 0,
-                                            'view': {'viewType': 'thumbnails',
-                                                     'sortBy': 'name',
-                                                     'sortOrder': 'ascending'}},
-                                 'parentReference': {'driveId': '7874bb446b4b4a00', 'driveType': 'personal'},
-                                 'shared': {'sharedDateTime': '2021-02-02T17:45:01.2948881Z'}}}
+    event_dict: typing.Dict = {
+        '@odata.type': '#microsoft.graph.driveItem', 'createdDateTime': '2021-02-02T17:45:01.2948881Z',
+        'cTag': 'adDpERDdGMjIyRjQ2QkFDNjQhMTgzNy42Mzc1MjgxODE0MjUyMDAwMDA',
+        'eTag': 'aREQ3RjIyMkY0NkJBQzY0ITE4MzcuMTg',
+        'id': '31123222F46BAC64!1837', 'lastModifiedDateTime': '2021-03-31T20:09:02.52Z',
+        'name': 'SharingTest',
+        'webUrl': 'https://1drv.ms/u/s!AABKS6vQU89_bA',
+        'lastModifiedBy': {'user': {'displayName': 'Sharee', 'id': '09876bac64'}},
+        'parentReference': {'driveId': '78612318bac64', 'driveType': 'personal', 'id': '09183471C64!103'},
+        'deleted': {},
+        'remoteItem': {'id': '731498DCD3AB4B4A00!108', 'size': 0,
+                       'webUrl': 'https://1drv.ms/u/s!AABKJA6vT0AR_bA',
+                       'fileSystemInfo': {'createdDateTime': '0001-01-01T08:00:00Z',
+                                          'lastModifiedDateTime': '0001-01-01T08:00:00Z'},
+                       'folder': {'childCount': 0,
+                                  'view': {'viewType': 'thumbnails',
+                                           'sortBy': 'name',
+                                           'sortOrder': 'ascending'}},
+                       'parentReference': {'driveId': '7874bb446b4b4a00', 'driveType': 'personal'},
+                       'shared': {'sharedDateTime': '2021-02-02T17:45:01.2948881Z'}}
+    }
 
+    # event_dict["deleted"] = {}
     event = odp._convert_to_event(event_dict, "new-cursor")
     assert not event.exists
 
