@@ -781,7 +781,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         ts = arrow.get(change.get('lastModifiedDateTime')).float_timestamp
         oid = change.get('id')
-        exists = not change.get('deleted')
+        exists = change.get('deleted') is None
 
         fil = change.get('file')
         fol = change.get('folder')
