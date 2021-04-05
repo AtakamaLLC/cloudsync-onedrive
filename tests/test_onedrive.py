@@ -28,30 +28,54 @@ class FakeGraphApi(FakeApi):
     @api_route("/upload")
     def upload(self, ctx, req):
         self.called("upload", (ctx, req))
-        return {"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#drives('bdd46067213df13')/items/$entity","@microsoft.graph.downloadUrl":"https://mckvog.bn.files.1drv.com/y4pxeIYeQKLFVu82R-paaa0e99SXlcC2zAz7ipLsi9EKUPVVsjUe-YBY2tXL6Uwr1KX4HP0tvg3kKejnhtmn79J8i6TW0-wYpdNvNCAKxAVi6UiBtIOUVtd75ZelLNsT_MpNzn65PdB5l926mUuPHq4Jqv3_FKdZCr0LmHm_QbbdEFenK3WgvDwFKIZDWCXEAdYxdJPqd2_wk0LVU9ClY4XBIcw84WPA1KdJbABz93ujiA","createdDateTime":"2019-12-04T15:24:18.523Z","cTag":"aYzpCREQ0NjA2NzIxM0RGMTMhMTAxMi4yNTc","eTag":"aQkRENDYwNjcyMTNERjEzITEwMTIuMQ","id":"BDD46067213DF13!1012","lastModifiedDateTime":"2019-12-04T15:24:19.717Z","name":"d943ae092dbf377dd443a9579eb10898.dest","size":32,"webUrl":"https://1drv.ms/u/s!ABPfE3IGRt0Lh3Q","createdBy":{"application":{"displayName":"Atakama","id":"4423e6ce"},"user":{"displayName":"Atakama --","id":"bdd46067213df13"}},"lastModifiedBy":{"application":{"displayName":"Atakama","id":"4423e6ce"},"user":{"displayName":"Atakama --","id":"bdd46067213df13"}},"parentReference":{"driveId":"bdd46067213df13","driveType":"personal","id":"BDD46067213DF13!1011","name":"3676c7b907d09b2d9681084a47bcae59","path":"/drive/root:/3676c7b907d09b2d9681084a47bcae59"},"file":{"mimeType":"application/octet-stream","hashes":{"quickXorHash":"MO4Q2k+0wIrVLvPvyFNEXjENmJU=","sha1Hash":"9B628BE5312D2F5E7B6ADB1D0114BC49595269BE"}},"fileSystemInfo":{"createdDateTime":"2019-12-04T15:24:18.523Z","lastModifiedDateTime":"2019-12-04T15:24:19.716Z"}}    # noqa
+        return {"@odata.context": "https://graph.microsoft.com/v1.0/$metadata#drives('bdd46067213df13')/items/$entity",
+                "@microsoft.graph.downloadUrl": "https://mckvog.bn.files.1drv.com/y4pxeIYeQKLFVu82R-paaa0e99SXlcC2zAz7ipLsi9EKUPVVsjUe-YBY2tXL6Uwr1KX4HP0tvg3kKejnhtmn79J8i6TW0-wYpdNvNCAKxAVi6UiBtIOUVtd75ZelLNsT_MpNzn65PdB5l926mUuPHq4Jqv3_FKdZCr0LmHm_QbbdEFenK3WgvDwFKIZDWCXEAdYxdJPqd2_wk0LVU9ClY4XBIcw84WPA1KdJbABz93ujiA",
+                "createdDateTime": "2019-12-04T15:24:18.523Z", "cTag": "aYzpCREQ0NjA2NzIxM0RGMTMhMTAxMi4yNTc",
+                "eTag": "aQkRENDYwNjcyMTNERjEzITEwMTIuMQ", "id": "BDD46067213DF13!1012",
+                "lastModifiedDateTime": "2019-12-04T15:24:19.717Z", "name": "d943ae092dbf377dd443a9579eb10898.dest",
+                "size": 32, "webUrl": "https://1drv.ms/u/s!ABPfE3IGRt0Lh3Q",
+                "createdBy": {"application": {"displayName": "Atakama", "id": "4423e6ce"},
+                              "user": {"displayName": "Atakama --", "id": "bdd46067213df13"}},
+                "lastModifiedBy": {"application": {"displayName": "Atakama", "id": "4423e6ce"},
+                                   "user": {"displayName": "Atakama --", "id": "bdd46067213df13"}},
+                "parentReference": {"driveId": "bdd46067213df13", "driveType": "personal", "id": "BDD46067213DF13!1011",
+                                    "name": "3676c7b907d09b2d9681084a47bcae59",
+                                    "path": "/drive/root:/3676c7b907d09b2d9681084a47bcae59"},
+                "file": {"mimeType": "application/octet-stream",
+                         "hashes": {"quickXorHash": "MO4Q2k+0wIrVLvPvyFNEXjENmJU=",
+                                    "sha1Hash": "9B628BE5312D2F5E7B6ADB1D0114BC49595269BE"}},
+                "fileSystemInfo": {"createdDateTime": "2019-12-04T15:24:18.523Z",
+                                   "lastModifiedDateTime": "2019-12-04T15:24:19.716Z"}}  # noqa
 
     @api_route("/token")
     def token(self, ctx, req):
         self.called("token", (ctx, req))
         return {
-                "token_type": "bearer",
-                "refresh_token": NEW_TOKEN,
-                "access_token": "a1",
-                "expires_in": 340,
-                "scope": "yes",
-                }
+            "token_type": "bearer",
+            "refresh_token": NEW_TOKEN,
+            "access_token": "a1",
+            "expires_in": 340,
+            "scope": "yes",
+        }
 
     @api_route("/me/drive")
     def me_drive(self, ctx, req):
         self.called("quota", (ctx, req))
-        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity', 'id': 'bdd46067213df13', 'driveType': 'personal', 'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}}, 'quota': {'deleted': 15735784, 'remaining': 1104878763593, 'state': 'normal', 'total': 1104880336896, 'used': 1573303}}
+        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity', 'id': 'bdd46067213df13',
+                'driveType': 'personal', 'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}},
+                'quota': {'deleted': 15735784, 'remaining': 1104878763593, 'state': 'normal', 'total': 1104880336896,
+                          'used': 1573303}}
 
     @api_route("/me/drives")
     def me_drives(self, ctx, req):
         self.called("_fetch_personal_drives", (ctx, req))
         if self.multiple_personal_drives:
-            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'}, {'id': '31fd31276064ddb', 'driveType': 'business', 'name': 'drive-2'}]}
-        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal', 'owner': {'user': {'displayName': 'owner-name', 'id': 'owner-id'}}}]}
+            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives',
+                    'value': [{'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal'},
+                              {'id': '31fd31276064ddb', 'driveType': 'business', 'name': 'drive-2'}]}
+        return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives', 'value': [
+            {'id': 'bdd46067213df13', 'driveType': 'business', 'name': 'personal',
+             'owner': {'user': {'displayName': 'owner-name', 'id': 'owner-id'}}}]}
 
     @api_route("/me/drive/sharedWithMe")
     def me_drive_shared_with_me(self, ctx, req):
@@ -217,7 +241,6 @@ class FakeGraphApi(FakeApi):
             } ] }
         """)
 
-
     @api_route("/drives/")
     def default(self, ctx, req):
         upload_url = self.uri("/upload")
@@ -232,10 +255,14 @@ class FakeGraphApi(FakeApi):
                 raise ApiError(400, json={"error": {"code": ErrorCode.ItemNotFound, "message": uri}})
 
             if uri.startswith("/drives/item-not-found/"):
-                raise ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": uri}}) 
+                raise ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": uri}})
 
             if re.match(r"^/drives/[^/]+/$", uri):
-                return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity', 'id': 'bdd46067213df13', 'name': 'drive-name', 'driveType': 'personal', 'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}}, 'quota': {'deleted': 519205504, 'remaining': 1104878758982, 'state': 'normal', 'total': 1104880336896, 'used': 1577914}}
+                return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#drives/$entity',
+                        'id': 'bdd46067213df13', 'name': 'drive-name', 'driveType': 'personal',
+                        'owner': {'user': {'displayName': 'Atakama --', 'id': 'bdd46067213df13'}},
+                        'quota': {'deleted': 519205504, 'remaining': 1104878758982, 'state': 'normal',
+                                  'total': 1104880336896, 'used': 1577914}}
 
             if uri.find("ITEM_ID_30") > 0:
                 return {
@@ -260,18 +287,38 @@ class FakeGraphApi(FakeApi):
                     }
                 }
 
-            err = ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": "whatever"}}) 
+            err = ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": "whatever"}})
             log.debug("raising %s", err)
             raise err
 
         if meth == "POST" and "/createUploadSession" in uri:
             self.called("upload.session", (uri,))
             log.debug("upload")
-            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#microsoft.graph.uploadSession', 'expirationDateTime': '2019-12-11T15:32:31.101Z', 'nextExpectedRanges': ['0-'], 'uploadUrl': upload_url}
+            return {'@odata.context': 'https://graph.microsoft.com/v1.0/$metadata#microsoft.graph.uploadSession',
+                    'expirationDateTime': '2019-12-11T15:32:31.101Z', 'nextExpectedRanges': ['0-'],
+                    'uploadUrl': upload_url}
 
         if meth == "PUT":
             self.called("upload.put", (uri,))
-            return {"@odata.context":"https://graph.microsoft.com/v1.0/$metadata#drives('bdd46067213df13')/items/$entity", "@microsoft.graph.downloadUrl":"https://mckvog.bn.files.1drv.com/y4pxeIYeQKLFVu82R-paaa0e99SXlcC2zAz7ipLsi9EKUPVVsjUe-YBY2tXL6Uwr1KX4HP0tvg3kKejnhtmn79J8i6TW0-wYpdNvNCAKxAVi6UiBtIOUVtd75ZelLNsT_MpNzn65PdB5l926mUuPHq4Jqv3_FKdZCr0LmHm_QbbdEFenK3WgvDwFKIZDWCXEAdYxdJPqd2_wk0LVU9ClY4XBIcw84WPA1KdJbABz93ujiA", "createdDateTime":"2019-12-04T15:24:18.523Z", "cTag":"aYzpCREQ0NjA2NzIxM0RGMTMhMTAxMi4yNTc", "eTag":"aQkRENDYwNjcyMTNERjEzITEwMTIuMQ", "id":"BDD46067213DF13!1012", "lastModifiedDateTime":"2019-12-04T15:24:19.717Z", "name":"d943ae092dbf377dd443a9579eb10898.dest", "size":32, "webUrl":"https://1drv.ms/u/s!ABPfE3IGRt0Lh3Q", "createdBy":{"application":{"displayName":"Atakama", "id":"4423e6ce"}, "user":{"displayName":"Atakama --", "id":"bdd46067213df13"}}, "lastModifiedBy":{"application":{"displayName":"Atakama", "id":"4423e6ce"}, "user":{"displayName":"Atakama --", "id":"bdd46067213df13"}}, "parentReference":{"driveId":"bdd46067213df13", "driveType":"personal", "id":"BDD46067213DF13!1011", "name":"3676c7b907d09b2d9681084a47bcae59", "path":"/drive/root:/3676c7b907d09b2d9681084a47bcae59"}, "file":{"mimeType":"application/octet-stream", "hashes":{"quickXorHash":"MO4Q2k+0wIrVLvPvyFNEXjENmJU=", "sha1Hash":"9B628BE5312D2F5E7B6ADB1D0114BC49595269BE"}}, "fileSystemInfo":{"createdDateTime":"2019-12-04T15:24:18.523Z", "lastModifiedDateTime":"2019-12-04T15:24:19.716Z"}} # noqa
+            return {
+                "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#drives('bdd46067213df13')/items/$entity",
+                "@microsoft.graph.downloadUrl": "https://mckvog.bn.files.1drv.com/y4pxeIYeQKLFVu82R-paaa0e99SXlcC2zAz7ipLsi9EKUPVVsjUe-YBY2tXL6Uwr1KX4HP0tvg3kKejnhtmn79J8i6TW0-wYpdNvNCAKxAVi6UiBtIOUVtd75ZelLNsT_MpNzn65PdB5l926mUuPHq4Jqv3_FKdZCr0LmHm_QbbdEFenK3WgvDwFKIZDWCXEAdYxdJPqd2_wk0LVU9ClY4XBIcw84WPA1KdJbABz93ujiA",
+                "createdDateTime": "2019-12-04T15:24:18.523Z", "cTag": "aYzpCREQ0NjA2NzIxM0RGMTMhMTAxMi4yNTc",
+                "eTag": "aQkRENDYwNjcyMTNERjEzITEwMTIuMQ", "id": "BDD46067213DF13!1012",
+                "lastModifiedDateTime": "2019-12-04T15:24:19.717Z", "name": "d943ae092dbf377dd443a9579eb10898.dest",
+                "size": 32, "webUrl": "https://1drv.ms/u/s!ABPfE3IGRt0Lh3Q",
+                "createdBy": {"application": {"displayName": "Atakama", "id": "4423e6ce"},
+                              "user": {"displayName": "Atakama --", "id": "bdd46067213df13"}},
+                "lastModifiedBy": {"application": {"displayName": "Atakama", "id": "4423e6ce"},
+                                   "user": {"displayName": "Atakama --", "id": "bdd46067213df13"}},
+                "parentReference": {"driveId": "bdd46067213df13", "driveType": "personal", "id": "BDD46067213DF13!1011",
+                                    "name": "3676c7b907d09b2d9681084a47bcae59",
+                                    "path": "/drive/root:/3676c7b907d09b2d9681084a47bcae59"},
+                "file": {"mimeType": "application/octet-stream",
+                         "hashes": {"quickXorHash": "MO4Q2k+0wIrVLvPvyFNEXjENmJU=",
+                                    "sha1Hash": "9B628BE5312D2F5E7B6ADB1D0114BC49595269BE"}},
+                "fileSystemInfo": {"createdDateTime": "2019-12-04T15:24:18.523Z",
+                                   "lastModifiedDateTime": "2019-12-04T15:24:19.716Z"}}  # noqa
 
         if meth == "POST" and "/children" in uri:
             self.called("mkdir", (uri,))
@@ -322,8 +369,25 @@ def test_mkdir():
 
 def test_root_event():
     srv, odp = fake_odp()
-    root_event = {'@odata.type': '#microsoft.graph.driveItem', 'createdDateTime': '2019-10-27T05:46:04Z', 'id': '01LYWINUF6Y2GOVW7725BZO354PWSELRRZ', 'lastModifiedDateTime': '2020-01-02T15:45:55Z', 'name': 'root', 'webUrl': 'https://vidaid-my.sharepoint.com/personal/jack_vidaid_onmicrosoft_com/Documents', 'size': 6642351, 'parentReference': {'driveId': 'root', 'driveType': 'business'}, 'fileSystemInfo': {'createdDateTime': '2019-10-27T05:46:04Z', 'lastModifiedDateTime': '2020-01-02T15:45:55Z'}, 'folder': {'childCount': 5}, 'root': {}}
-    non_root_event = {'@odata.type': '#microsoft.graph.driveItem', 'createdDateTime': '2020-01-02T15:44:44Z', 'eTag': '"{F0D504AA-C7E0-4B49-B529-63DEB72E09FE},1"', 'id': '01LYWINUFKATK7BYGHJFF3KKLD323S4CP6', 'lastModifiedDateTime': '2020-01-02T15:44:44Z', 'name': '20200102-02', 'webUrl': 'https://vidaid-my.sharepoint.com/personal/jack_vidaid_onmicrosoft_com/Documents/20200102-02', 'cTag': '"c:{F0D504AA-C7E0-4B49-B529-63DEB72E09FE},0"', 'size': 0, 'createdBy': {'application': {'displayName': 'Atakama'}, 'user': {'email': 'jack@vidaid.onmicrosoft.com', 'displayName': 'jack'}}, 'parentReference': {'driveId': 'root', 'driveType': 'business', 'id': '01LYWINUF6Y2GOVW7725BZO354PWSELRRZ', 'path': '/drive/root:'}, 'fileSystemInfo': {'createdDateTime': '2020-01-02T15:44:44Z', 'lastModifiedDateTime': '2020-01-02T15:44:44Z'}, 'folder': {'childCount': 2}}
+    root_event = {'@odata.type': '#microsoft.graph.driveItem', 'createdDateTime': '2019-10-27T05:46:04Z',
+                  'id': '01LYWINUF6Y2GOVW7725BZO354PWSELRRZ', 'lastModifiedDateTime': '2020-01-02T15:45:55Z',
+                  'name': 'root',
+                  'webUrl': 'https://vidaid-my.sharepoint.com/personal/jack_vidaid_onmicrosoft_com/Documents',
+                  'size': 6642351, 'parentReference': {'driveId': 'root', 'driveType': 'business'},
+                  'fileSystemInfo': {'createdDateTime': '2019-10-27T05:46:04Z',
+                                     'lastModifiedDateTime': '2020-01-02T15:45:55Z'}, 'folder': {'childCount': 5},
+                  'root': {}}
+    non_root_event = {'@odata.type': '#microsoft.graph.driveItem', 'createdDateTime': '2020-01-02T15:44:44Z',
+                      'eTag': '"{F0D504AA-C7E0-4B49-B529-63DEB72E09FE},1"', 'id': '01LYWINUFKATK7BYGHJFF3KKLD323S4CP6',
+                      'lastModifiedDateTime': '2020-01-02T15:44:44Z', 'name': '20200102-02',
+                      'webUrl': 'https://vidaid-my.sharepoint.com/personal/jack_vidaid_onmicrosoft_com/Documents/20200102-02',
+                      'cTag': '"c:{F0D504AA-C7E0-4B49-B529-63DEB72E09FE},0"', 'size': 0,
+                      'createdBy': {'application': {'displayName': 'Atakama'},
+                                    'user': {'email': 'jack@vidaid.onmicrosoft.com', 'displayName': 'jack'}},
+                      'parentReference': {'driveId': 'root', 'driveType': 'business',
+                                          'id': '01LYWINUF6Y2GOVW7725BZO354PWSELRRZ', 'path': '/drive/root:'},
+                      'fileSystemInfo': {'createdDateTime': '2020-01-02T15:44:44Z',
+                                         'lastModifiedDateTime': '2020-01-02T15:44:44Z'}, 'folder': {'childCount': 2}}
 
     assert odp._convert_to_event(root_event, "123") is None
     assert odp._convert_to_event(non_root_event, "123") is not None
@@ -537,6 +601,7 @@ def test_walk_filtered_directory():
             for _ in odp._walk_filtered_directory("oid4", history):
                 pass
 
+
 def test_connect_resiliency():
     api, odp = fake_odp()
     odp.disconnect()
@@ -612,3 +677,51 @@ def test_connect_exception_handling():
     # malformed namespace id
     with pytest.raises(CloudNamespaceError):
         odp._get_validated_namespace("")
+
+
+def test_convert_to_event():
+    _, odp = fake_odp()
+
+    event_dict: typing.Dict = {
+        '@odata.type': '#microsoft.graph.driveItem', 'createdDateTime': '2021-02-02T17:45:01.2948881Z',
+        'cTag': 'adDpERDdGMjIyRjQ2QkFDNjQhMTgzNy42Mzc1MjgxODE0MjUyMDAwMDA',
+        'eTag': 'aREQ3RjIyMkY0NkJBQzY0ITE4MzcuMTg',
+        'id': '31123222F46BAC64!1837', 'lastModifiedDateTime': '2021-03-31T20:09:02.52Z',
+        'name': 'SharingTest',
+        'webUrl': 'https://1drv.ms/u/s!AABKS6vQU89_bA',
+        'lastModifiedBy': {'user': {'displayName': 'Sharee', 'id': '09876bac64'}},
+        'parentReference': {'driveId': '78612318bac64', 'driveType': 'personal', 'id': '09183471C64!103'},
+        'deleted': {},
+        'remoteItem': {'id': '731498DCD3AB4B4A00!108', 'size': 0,
+                       'webUrl': 'https://1drv.ms/u/s!AABKJA6vT0AR_bA',
+                       'fileSystemInfo': {'createdDateTime': '0001-01-01T08:00:00Z',
+                                          'lastModifiedDateTime': '0001-01-01T08:00:00Z'},
+                       'folder': {'childCount': 0,
+                                  'view': {'viewType': 'thumbnails',
+                                           'sortBy': 'name',
+                                           'sortOrder': 'ascending'}},
+                       'parentReference': {'driveId': '7874bb446b4b4a00', 'driveType': 'personal'},
+                       'shared': {'sharedDateTime': '2021-02-02T17:45:01.2948881Z'}}
+    }
+
+    # event_dict["deleted"] = {}
+    event = odp._convert_to_event(event_dict, "new-cursor")
+    assert not event.exists
+
+    event_dict["deleted"]["state"] = "softDeleted"
+    event = odp._convert_to_event(event_dict, "new-cursor")
+    assert not event.exists
+
+    event_dict["deleted"]["state"] = "hardDeleted"
+    event = odp._convert_to_event(event_dict, "new-cursor")
+    assert not event.exists
+
+    event_dict["deleted"]["state"] = "deleted"
+    event = odp._convert_to_event(event_dict, "new-cursor")
+    assert not event.exists
+
+    del event_dict["deleted"]
+    # non-delete events require a parent path
+    event_dict["parentReference"]["path"] = "/parent/path"
+    event = odp._convert_to_event(event_dict, "new-cursor")
+    assert event.exists

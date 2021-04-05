@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.1.1"  # pragma: no cover
+__version__ = "3.1.2"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -781,7 +781,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         ts = arrow.get(change.get('lastModifiedDateTime')).float_timestamp
         oid = change.get('id')
-        exists = not change.get('deleted')
+
+        # See:  https://docs.microsoft.com/en-us/graph/api/resources/deleted?view=graph-rest-1.0
+        # Note that the "deleted" resource can return an empty dict, for example when a shared folder is "removed"
+        # by the sharee -- still means the item was deleted in this case (the event does not contain a parent path).
+        # In most cases the "delete" resource returns a dict containing a state:{ "state": "softDeleted" }
+        exists = change.get('deleted') is None
 
         fil = change.get('file')
         fol = change.get('folder')
