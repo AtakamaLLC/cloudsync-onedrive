@@ -255,3 +255,12 @@ def test_shared_folder_basic(shared_folder_prov):
             prov.namespace_id = legacy_ns_id
         # put it back to make test teardown happy
         prov.namespace_id = ns_id
+
+
+def test_shared_folder_owner_created_subfolder(shared_folder_prov):
+    # precondition:
+    # shared folder contains a sub-folder named "owner-created" that was created by the owner (sharer) of the parent
+
+    prov = shared_folder_prov.prov
+    f1 = prov.create(f"/owner-created/{os.urandom(32).hex()}", BytesIO(b"file1")).oid
+    prov.delete(f1)
