@@ -259,8 +259,18 @@ def test_shared_folder_basic(shared_folder_prov):
 
 def test_shared_folder_owner_created_subfolder(shared_folder_prov):
     # precondition:
-    # shared folder contains a sub-folder named "owner-created" that was created by the owner (sharer) of the parent
+    #   shared folder contains a sub-folder named "owner-created" that was created by the owner (sharer)
+    #   of the shared folder
 
+    # use the raw provider, not the mixin instance (which provides isolation by creating a remote folder per test) --
+    # that is NOT what we want here
     prov = shared_folder_prov.prov
-    f1 = prov.create(f"/owner-created/{os.urandom(32).hex()}", BytesIO(b"file1")).oid
-    prov.delete(f1)
+    f1_content = BytesIO(b"file1")
+    f1_path = f"/owner-created/{os.urandom(32).hex()}"
+    f1_oid = prov.create(f1_path, f1_content).oid
+    f1_downloaded = BytesIO()
+    prov.download(f1_oid, f1_downloaded)
+    assert f1_downloaded.read() == f1_content.read()
+    prov.delete(f1_oid)
+    oids = [item.oid for item in prov.listdir_path("/owner-created")]
+    assert f1_oid not in oids
