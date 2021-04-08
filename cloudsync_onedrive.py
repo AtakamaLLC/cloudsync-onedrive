@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.1.2"  # pragma: no cover
+__version__ = "3.1.3"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -207,7 +207,7 @@ class OneDriveItem:
             return "/drives/%s/items/%s" % (self._drive_id, self.__oid)
         if self.__path:
             enc_path = urllib.parse.quote(self.__path)
-            return "/drives/%s/%s:%s" % (self._drive_id, self.__prov.namespace.api_root_path, enc_path)
+            return "/drives/%s/%s:%s:" % (self._drive_id, self.__prov.namespace.api_root_path, enc_path)
         raise AssertionError("This should not happen, since __init__ verifies that there is one or the other")
 
     def get(self):
@@ -997,7 +997,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return self._info_from_rest(r, root=dirname)
         else:
             with self._api() as client:
-                r = self._upload_large(self._get_item(client, path=path).api_path + ":", file_like, conflict="fail")
+                r = self._upload_large(self._get_item(client, path=path).api_path, file_like, conflict="fail")
             return self._info_from_rest(r, root=self.dirname(path))
 
     def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
