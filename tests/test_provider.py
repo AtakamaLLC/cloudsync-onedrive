@@ -21,6 +21,9 @@ def test_globalize_oid(provider):
     assert provider.info_oid(goid).path == "/"
     assert goid != "root"
 
+    already_global_oid = provider.mkdir("root")
+    assert provider.globalize_oid(already_global_oid) == already_global_oid
+
 
 def test_interrupted_file_upload(provider):
     # Should take 3 successful API calls to upload file
