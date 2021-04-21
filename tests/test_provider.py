@@ -164,8 +164,8 @@ def test_event_filter_walk(provider):
 
 
 shared_folder_test_namespaces = {
-    "onedrive": Namespace("shared", "shared|dd7f222f46bac64|DD7F222F46BAC64!2041"),
-    "testodbiz": Namespace("shared", "shared|b!0qbetD5QrUuzjmOjNoPe9wisWTc1bHZIuI7oeRvpO9D-BYpMoKiQSbpE_LhFwA9V|01DZISLZE42SNUKE2EERB3RY6ODMX3KRZF"),
+    "onedrive": Namespace("shared", os.environ.get("ONEDRIVE_SHARED_NS_ID")),
+    "testodbiz": Namespace("shared", os.environ.get("TESTODBIZ_SHARED_NS_ID")),
 }
 
 
