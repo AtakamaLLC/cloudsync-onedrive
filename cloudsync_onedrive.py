@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.1.3"  # pragma: no cover
+__version__ = "3.1.4"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -813,6 +813,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 return None
 
             path = self._join_parent_reference_path_and_name(parent_path, change['name'])
+            if not path:
+                # path is falsy when it is outside a shared folder (ODB only)
+                return None
 
         return Event(otype, oid, path, ohash, exists, ts, new_cursor=new_cursor)
 
@@ -1106,7 +1109,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _parse_time(time_str):
         try:
             if time_str:
-                ret_val = arrow.get(time_str).timestamp
+                ret_val = arrow.get(time_str).int_timestamp
             else:
                 ret_val = 0
         except Exception as e:  # pragma: no cover
@@ -1114,9 +1117,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             ret_val = 0
         return ret_val
 
-    def _make_path_relative_to_shared_folder_if_needed(self, path):
+    def _make_path_relative_to_shared_folder_if_needed(self, path, force=False):
         if self._is_biz and self.namespace and self.namespace.is_shared:
-            path = self.is_subpath(self.namespace.shared_folder_path, path) or path
+            relative_path = self.is_subpath(self.namespace.shared_folder_path, path)
+            if relative_path or force:
+                return relative_path
         return path
 
     def _info_from_rest(self, item, root=None):
@@ -1214,6 +1219,9 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         except CloudFileNotFoundError:
             pass
 
+    def globalize_oid(self, oid: str) -> str:
+        return self.info_oid(oid).oid if oid == "root" else oid
+
     def exists_oid(self, oid):
         return self._info_oid(oid, path=False) is not None
 
@@ -1308,7 +1316,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 raise Exception("path '%s'(%s, %s) does not start with '%s', maybe implement recursion?" % (path, pr_path, name, preambles))
 
         path = urllib.parse.unquote(path)
-        path = self._make_path_relative_to_shared_folder_if_needed(path)
+        path = self._make_path_relative_to_shared_folder_if_needed(path, force=True)
         return path
 
     def _get_item(self, client, *, oid=None, path=None):
