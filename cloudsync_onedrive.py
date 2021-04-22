@@ -814,7 +814,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             path = self._join_parent_reference_path_and_name(parent_path, change['name'])
             if not path:
-                log.debug("ignoring event: path %s is outside shared folder", parent_path)
+                # path is falsy when it is outside a shared folder (ODB only)
                 return None
 
         return Event(otype, oid, path, ohash, exists, ts, new_cursor=new_cursor)

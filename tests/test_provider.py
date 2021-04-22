@@ -164,6 +164,8 @@ def test_event_filter_walk(provider):
 
 
 shared_folder_test_namespaces = {
+    # to get a namespace ID: use the provider.list_ns() function, either via the CLI or a test, to list all
+    # available namespaces for a given account/credentials
     "onedrive": Namespace("shared", os.environ.get("ONEDRIVE_SHARED_NS_ID")),
     "testodbiz": Namespace("shared", os.environ.get("TESTODBIZ_SHARED_NS_ID")),
 }
