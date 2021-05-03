@@ -707,7 +707,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return self
 
     def __enter__(self):
-        self._mutex.__enter__()
+        self._mutex.__enter__()  # pylint: disable=consider-using-with
         return self.__client
 
     def __exit__(self, ty, ex, tb):
