@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.1.4"  # pragma: no cover
+__version__ = "3.1.5"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -707,7 +707,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return self
 
     def __enter__(self):
-        self._mutex.__enter__()
+        self._mutex.__enter__()  # pylint: disable=consider-using-with
         return self.__client
 
     def __exit__(self, ty, ex, tb):
@@ -1404,10 +1404,14 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @namespace_id.setter
     def namespace_id(self, ns_id: str):
-        self._namespace = None
         if self.connected:
             # validate
-            self._namespace = self._get_validated_namespace(ns_id)
+            try:
+                self._namespace = self._get_validated_namespace(ns_id)
+            except:
+                self._namespace = None
+                raise
+
             if self.namespace.is_shared:
                 self.namespace.shared_folder_path = self.info_oid(self.namespace.shared_folder_id).path_orig
                 log.info("namespace.shared_folder_path = %s", self.namespace.shared_folder_path)
