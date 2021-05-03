@@ -1404,10 +1404,14 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @namespace_id.setter
     def namespace_id(self, ns_id: str):
-        self._namespace = None
         if self.connected:
             # validate
-            self._namespace = self._get_validated_namespace(ns_id)
+            try:
+                self._namespace = self._get_validated_namespace(ns_id)
+            except:
+                self._namespace = None
+                raise
+
             if self.namespace.is_shared:
                 self.namespace.shared_folder_path = self.info_oid(self.namespace.shared_folder_id).path_orig
                 log.info("namespace.shared_folder_path = %s", self.namespace.shared_folder_path)
