@@ -316,7 +316,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self._creds: Optional[Dict[str, str]] = None
         self.__cursor: Optional[str] = None
         self.__client: onedrivesdk.OneDriveClient = None
-        self.__test_root: str = None
         self._mutex = threading.RLock()
         self._oauth_config = oauth_config
         self._namespace: Optional[Drive] = None
@@ -363,8 +362,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                       'content-type': 'application/json'}
             if headers:
                 head.update(headers)
-            for k in head:
-                head[k] = str(head[k])
+            for k, v in head.items():
+                head[k] = str(v)
             log.debug("direct %s %s", action, url)
             req = self._http.session.request(
                 action,
@@ -391,11 +390,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         if stream:
             return req
-        res = req.json()
-# very large: uncomment if more detail needed, semicolonn left in for lint prevention
-#        log.debug("response %s", res);
 
-        return res
+# very large: uncomment if more detail needed, semicolonn left in for lint prevention
+#        log.debug("response %s", req.json());
+
+        return req.json()
 
     def _direct_api_error_trap(self, path, method="get", default=None):
         # wrapper for _direct_api that raises only connectivity errors - other errors are caught and logged
