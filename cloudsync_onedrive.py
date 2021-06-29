@@ -591,6 +591,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         if status == 404:
             raise CloudFileNotFoundError(msg)
+        if status == 410:
+            raise CloudCursorError(msg)
         if status in (429, 503):
             raise CloudTemporaryError(msg)
         if code in ('ErrorInsufficientPermissionsInAccessToken', ErrorCode.Unauthenticated):

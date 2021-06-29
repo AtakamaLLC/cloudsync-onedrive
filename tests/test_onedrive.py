@@ -8,9 +8,15 @@ import typing
 from unittest.mock import patch, call
 
 import pytest
+import requests
 
 from onedrivesdk_fork.error import ErrorCode
-from cloudsync.exceptions import CloudNamespaceError, CloudTokenError, CloudFileNotFoundError, CloudDisconnectedError
+from cloudsync.exceptions import (
+    CloudNamespaceError,
+    CloudTokenError,
+    CloudFileNotFoundError,
+    CloudCursorError,
+)
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
@@ -677,6 +683,19 @@ def test_connect_exception_handling():
     # malformed namespace id
     with pytest.raises(CloudNamespaceError):
         odp._get_validated_namespace("")
+
+
+def test_cursor_error():
+    api, odp = fake_odp()
+
+    def return_410(*args, **kwargs):
+        resp = requests.Response()
+        resp.status_code = 410
+        return resp
+
+    with patch.object(odp._http.session, "request", return_410):
+        with pytest.raises(CloudCursorError):
+            list(odp.events())
 
 
 def test_convert_to_event():
