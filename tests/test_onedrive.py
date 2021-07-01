@@ -697,6 +697,16 @@ def test_cursor_error():
         with pytest.raises(CloudCursorError):
             list(odp.events())
 
+    def return_400(*args, **kwargs):
+        resp = requests.Response()
+        resp.status_code = 400
+        resp.json = lambda **kwargs: {"error": {"message": "malformed sync token", "code": ErrorCode.InvalidRequest}}
+        return resp
+
+    with patch.object(odp._http.session, "request", return_400), patch.object(odp, "_check_ns", return_value=True):
+        with pytest.raises(CloudCursorError):
+            list(odp.events())
+
 
 def test_convert_to_event():
     _, odp = fake_odp()

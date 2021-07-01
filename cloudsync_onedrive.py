@@ -617,7 +617,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             if status == 405:
                 raise CloudFileExistsError(msg)
             if status == 400:
-                raise CloudFileNotFoundError(msg)
+                if "sync token" in msg:
+                    raise CloudCursorError(msg)
+                else:
+                    raise CloudFileNotFoundError(msg)
         if code in ("UnknownError", "generalException"):
             raise CloudTemporaryError(msg)
 
