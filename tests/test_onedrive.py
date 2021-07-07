@@ -701,7 +701,6 @@ def test_cursor_error():
         resp = MagicMock()
         resp.status_code = 400
         resp.json = lambda **kwargs: {"error": {"message": "malformed sync token", "code": ErrorCode.InvalidRequest}}
-
         return resp
 
     with patch.object(odp._http.session, "request", return_400), patch.object(odp, "_check_ns", return_value=True):
