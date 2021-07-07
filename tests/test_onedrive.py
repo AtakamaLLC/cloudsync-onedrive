@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import typing
-from unittest.mock import patch, call
+from unittest.mock import patch, call, MagicMock
 
 import pytest
 import requests
@@ -694,6 +694,16 @@ def test_cursor_error():
         return resp
 
     with patch.object(odp._http.session, "request", return_410):
+        with pytest.raises(CloudCursorError):
+            list(odp.events())
+
+    def return_400(*args, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 400
+        resp.json = lambda **kwargs: {"error": {"message": "malformed sync token", "code": ErrorCode.InvalidRequest}}
+        return resp
+
+    with patch.object(odp._http.session, "request", return_400), patch.object(odp, "_check_ns", return_value=True):
         with pytest.raises(CloudCursorError):
             list(odp.events())
 

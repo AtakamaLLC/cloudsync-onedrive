@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.1.6"  # pragma: no cover
+__version__ = "3.1.7"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -617,6 +617,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             if status == 405:
                 raise CloudFileExistsError(msg)
             if status == 400:
+                if "sync token" in msg.lower():
+                    raise CloudCursorError(msg)
                 raise CloudFileNotFoundError(msg)
         if code in ("UnknownError", "generalException"):
             raise CloudTemporaryError(msg)
