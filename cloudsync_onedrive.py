@@ -40,7 +40,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.1.7"  # pragma: no cover
+__version__ = "3.1.8"  # pragma: no cover
 
 
 SOCK_TIMEOUT = 180
@@ -541,7 +541,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             else:
                 log.warning("Not a parent namespace: %s / %s", parent.id, parent.name)
         else:
-            self._fetch_drive_list(clear_cache=True)
+            self._fetch_drive_list()
             namespaces += self._personal_drive.drives
             for _, site in self.__site_by_id.items():
                 if site == self._personal_drive:
@@ -696,12 +696,16 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     self._oauth_config.creds_changed(creds)
 
                 self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, self._http)
-                self.__client.item = self.__client.item  # satisfies a lint confusion
                 self._creds = creds
 
-        self._fetch_personal_drives()
-        # validate namespace if specified, default to personal drive if not
-        self.namespace_id = self.namespace_id or self._personal_drive.drives[0].id
+                self._fetch_drive_list(clear_cache=True)
+                if self.connection_id and self.connection_id != self._personal_drive.drives[0].drive_id:
+                    self.__client = None
+                    raise CloudTokenError("Cannot connect with mismatched credentials")
+
+                # validate namespace if specified, default to personal drive if not
+                self.namespace_id = self.namespace_id or self._personal_drive.drives[0].id
+
         return self._personal_drive.drives[0].drive_id
 
     def _api(self, *args, needs_client=True, **kwargs):  # pylint: disable=arguments-differ

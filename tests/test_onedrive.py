@@ -649,9 +649,15 @@ def test_connect_raises_token_errors():
     # ensure connectivity errors bubble up
     with patch.object(OneDriveProvider, "_base_url", api.uri()):
         with patch.object(odp, '_direct_api', side_effect=direct_api_raises_errors):
-            odp.reconnect()
             with pytest.raises(CloudTokenError):
-                odp.list_ns()
+                odp.reconnect()
+
+    # creds mismatch = CloudTokenError
+    odp.disconnect()
+    odp.connection_id = "creds-mismatch"
+    with patch.object(odp, "_fetch_drive_list"):
+        with pytest.raises(CloudTokenError):
+            odp.reconnect()
 
 
 def test_connect_exception_handling():
