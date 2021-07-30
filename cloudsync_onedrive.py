@@ -700,11 +700,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
                 self._fetch_drive_list(clear_cache=True)
                 if self.connection_id and self.connection_id != self._personal_drive.drives[0].drive_id:
-                    self.__client = None
+                    self.disconnect()
                     raise CloudTokenError("Cannot connect with mismatched credentials")
 
                 # validate namespace if specified, default to personal drive if not
-                self.namespace_id = self.namespace_id or self._personal_drive.drives[0].id
+                try:
+                    self.namespace_id = self.namespace_id or self._personal_drive.drives[0].id
+                except:
+                    self.disconnect()
+                    raise
 
         return self._personal_drive.drives[0].drive_id
 

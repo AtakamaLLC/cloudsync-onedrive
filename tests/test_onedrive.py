@@ -506,6 +506,7 @@ def test_namespace_set_disconn():
     with patch.object(OneDriveProvider, "_base_url", srv.uri()):
         with pytest.raises(CloudNamespaceError):
             odp.reconnect()
+        assert not odp.connected
 
 
 def test_namespace_set_other():
