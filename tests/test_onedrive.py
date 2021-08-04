@@ -516,9 +516,9 @@ def test_namespace_set_other():
         raise CloudTokenError("yo")
 
     with patch.object(odp, '_direct_api', side_effect=raise_error):
-        with pytest.raises(CloudTokenError):
+        with pytest.raises(CloudNamespaceError):
             odp.namespace = Namespace(name="whatever", id="item-not-found")
-        with pytest.raises(CloudTokenError):
+        with pytest.raises(CloudNamespaceError):
             odp.namespace_id = "item-not-found"
 
 
