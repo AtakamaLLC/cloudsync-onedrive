@@ -698,15 +698,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, self._http)
                 self._creds = creds
 
-                self._fetch_drive_list(clear_cache=True)
-                if self.connection_id and self.connection_id != self._personal_drive.drives[0].drive_id:
-                    self.disconnect()
-                    raise CloudTokenError("Cannot connect with mismatched credentials")
-
-                # validate namespace if specified, default to personal drive if not
                 try:
+                    self._fetch_drive_list(clear_cache=True)
+                    if self.connection_id and self.connection_id != self._personal_drive.drives[0].drive_id:
+                        raise CloudTokenError("OneDrive: cannot connect with mismatched credentials")
+                    # validate namespace if specified, default to personal drive if not
                     self.namespace_id = self.namespace_id or self._personal_drive.drives[0].id
                 except:
+                    # any error in namespace fetch/validation leaves the provider in a bad state: no namespace or
+                    # an unverified namespace. Consumers must reconnect to use this provider instance.
                     self.disconnect()
                     raise
 
@@ -1455,7 +1455,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             elif ids.drive_id:
                 drive = next((d for d in self._personal_drive.drives if d.drive_id == ids.drive_id), None)
                 if not drive:
-                    api_drive = self._direct_api("get", f"/drives/{ids.drive_id}/")
+                    try:
+                        api_drive = self._direct_api("get", f"/drives/{ids.drive_id}/")
+                    except Exception as e:
+                        raise CloudNamespaceError(f"Drive fetch error: {repr(e)}")
                     drive = Drive(api_drive.get("name", "Personal"), ns_id)
             else:
                 raise CloudNamespaceError(f"Malformed drive id: {ns_id}")
