@@ -554,7 +554,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @memoize
     def _check_ns(self, nsid, conn_id_for_memo):                                 # pylint: disable=unused-argument
-        res = self._direct_api("get", f"/drives/{nsid}/items/{self.namespace.api_root_oid}")
+        res = self._direct_api("get", f"/drives/{nsid}/items/{self.namespace.api_root_oid}", raw_response=True)
         return res.status_code < 300
 
     def _raise_converted_error(self, *, ex=None, req=None):      # pylint: disable=too-many-branches, too-many-statements
@@ -1324,7 +1324,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     found = True
                     break
             if not found:
-                raise Exception(f"path '{path}'({pr_path}), {name}) does not start with '{preambles}', maybe implement recursion?")
+                raise Exception(f"path '{path}'({pr_path}, {name}) does not start with '{preambles}', maybe implement recursion?")
 
         path = urllib.parse.unquote(path)
         path = self._make_path_relative_to_shared_folder_if_needed(path, force=True)
