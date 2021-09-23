@@ -14,7 +14,7 @@ classifiers=["Intended Audience :: Developers",
     "Programming Language :: Python",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires = ["cloudsync~=3.0.0", "onedrivesdk_fork", "quickxorhash", "dataclasses"]
+requires = ["cloudsync~=3.0.0", "onedrivesdk_fork", "quickxorhash", "dataclasses; python_version < '3.7'"]
 requires-python = ">=3.6"
 
 [tool.flit.entrypoints.cloudsync.providers]
