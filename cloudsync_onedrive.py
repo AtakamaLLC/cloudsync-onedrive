@@ -386,7 +386,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         if req.status_code > 202:
             if not self._raise_converted_error(req=req):
-                raise Exception(f"Unknown error {req.status_code} {req.json}")
+                raise Exception(f"Unknown error {req.status_code} {req.json()}")
 
         if stream:
             return req
