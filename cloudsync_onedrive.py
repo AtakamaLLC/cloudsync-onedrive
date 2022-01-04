@@ -28,8 +28,6 @@ import requests
 import arrow
 
 import onedrivesdk_fork as onedrivesdk
-from onedrivesdk_fork.error import OneDriveError, ErrorCode
-from onedrivesdk_fork.http_response import HttpResponse
 
 from cloudsync import Provider, Namespace, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo
 from cloudsync.exceptions import CloudTokenError, CloudDisconnectedError, CloudFileNotFoundError, \
@@ -40,8 +38,11 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-__version__ = "3.1.10"  # pragma: no cover
+log = logging.getLogger(__name__)
 
+QXHASH_0 = b"\0" * 20
+
+__version__ = "3.1.10"  # pragma: no cover
 
 SOCK_TIMEOUT = 180
 
@@ -61,7 +62,183 @@ class EventFilter(enum.Enum):
         raise ValueError("never bool enums")
 
 
-class HttpProvider(onedrivesdk.HttpProvider):
+class OneDriveError(Exception):
+
+    def __init__(self, prop_dict, status_code):
+        """Initialize a OneDriveError given the JSON
+        error response dictionary, and the HTTP status code
+
+        Args:
+            prop_dict (dict): A dictionary containing the response
+                from OneDrive
+            status_code (int): The HTTP status code (ex. 200, 201, etc.)
+        """
+        if "code" not in prop_dict or "message" not in prop_dict:
+            prop_dict["code"] = ErrorCode.Malformed
+            prop_dict["message"] = "The received response was malformed"
+            super(OneDriveError, self).__init__(prop_dict["code"]+" - "+prop_dict["message"])
+        else:
+            super(OneDriveError, self).__init__(prop_dict["code"]+" - "+prop_dict["message"])
+        self._prop_dict = prop_dict
+        self._status_code = status_code
+
+    @property
+    def status_code(self):
+        """The HTTP status code
+
+        Returns:
+            int: The HTTP status code
+        """
+        return self._status_code
+
+    @property
+    def code(self):
+        """The OneDrive error code sent back in
+        the response. Possible codes can be found
+        in the :class:`ErrorCode` enum.
+
+        Returns:
+            str: The error code
+        """
+        return self._prop_dict["code"]
+
+    @property
+    def inner_error(self):
+        """Creates a OneDriveError object from the specified inner
+        error within the response.
+
+        Returns:
+            :class:`OneDriveError`: Error from within the inner
+                response
+        """
+        return OneDriveError(self._prop_dict["innererror"], self.status_code) if "innererror" in self._prop_dict else None
+
+    def matches(self, code):
+        """Recursively searches the :class:`OneDriveError` to find
+        if the specified code was found
+
+        Args:
+            code (str): The error code to search for
+
+        Returns:
+            bool: True if the error code was found, false otherwise
+        """
+        if self.code == code:
+            return True
+
+        return False if self.inner_error is None else self.inner_error.matches(code)
+
+
+class ErrorCode(object):
+    #: Access was denied to the resource
+    AccessDenied = "accessDenied"
+    #: The activity limit has been reached
+    ActivityLimitReached = "activityLimitReached"
+    #: A general exception occured
+    GeneralException = "generalException"
+    #: An invalid range was provided
+    InvalidRange = "invalidRange"
+    #: An invalid request was provided
+    InvalidRequest = "invalidRequest"
+    #: The requested resource was not found
+    ItemNotFound = "itemNotFound"
+    #: Malware was detected in the resource
+    MalwareDetected = "malwareDetected"
+    #: The name already exists
+    NameAlreadyExists = "nameAlreadyExists"
+    #: The action was not allowed
+    NotAllowed = "notAllowed"
+    #: The action was not supported
+    NotSupported = "notSupported"
+    #: The resource was modified
+    ResourceModified = "resourceModified"
+    #: A resync is required
+    ResyncRequired = "resyncRequired"
+    #: The OneDrive service is not available
+    ServiceNotAvailable = "serviceNotAvailable"
+    #: The quota for this OneDrive has been reached
+    QuotaLimitReached = "quotaLimitReached"
+    #: The user is unauthenticated
+    Unauthenticated = "unauthenticated"
+
+    #: The response was malformed
+    Malformed = "malformed"
+
+
+class HttpResponse:
+
+    def __init__(self, status, headers, content):
+        """Initialize the HttpResponse class returned after
+        an HTTP request is made
+
+        Args:
+            status (int): HTTP status (ex. 200, 201, etc.)
+            headers (dict of (str, str)): The headers in the
+                response
+            content (str): The body of the response
+        """
+        self._status = status
+        self._headers = headers
+        self._content = content
+
+        if self.content and (self.status < 200 or self.status >= 300):
+            try:
+                message = json.loads(self.content)
+            except ValueError:  # Invalid or empty response message
+                message = {
+                    "error": {
+                        "code": ErrorCode.Malformed,
+                        "message": "The following invalid JSON was returned:\n%s" % self.content
+                        }
+                    }
+
+            if "error" in message:
+                if type(message["error"]) == dict:
+                    raise OneDriveError(message["error"], self.status)
+                else:
+                    raise Exception(str(message["error"]))
+
+    def __str__(self):
+        properties = {
+            'Status': self.status,
+            'Headers': self.headers,
+            'Content': self.content
+            }
+        ret = ""
+        for k, v in properties.items():
+            ret += "{}: {}\n".format(k, v)
+        return ret
+
+    @property
+    def status(self):
+        """The HTTP status of the response
+
+        Returns:
+            int: HTTP status
+        """
+        return self._status
+
+    @property
+    def headers(self):
+        """The headers of the response
+
+        Returns:
+            dict of (str, str):
+                The headers used by the response
+        """
+        return self._headers
+
+    @property
+    def content(self):
+        """The content of the response
+
+        Returns:
+            str: The body of the response
+        """
+        return self._content
+
+
+class HttpProvider:
     def __init__(self):
         self.session = requests.Session()
 
@@ -103,12 +280,72 @@ class HttpProvider(onedrivesdk.HttpProvider):
         return custom_response
 
 
+class OneDriveClient:
+
+    def __init__(self, base_url, auth_provider, http_provider, loop=None):
+        """Initialize the :class:`OneDriveClient` to be
+            used for all OneDrive API interactions
+
+        Args:
+            base_url (str): The OneDrive base url to use for API interactions
+            auth_provider(:class:`AuthProviderBase<onedrivesdk.auth_provider_base.AuthProviderBase>`):
+                The authentication provider used by the client to auth
+                with OneDrive services
+            http_provider(:class:`HttpProviderBase<onedrivesdk.http_provider_base.HttpProviderBase>`):
+                The HTTP provider used by the client to send all
+                requests to OneDrive
+            loop (BaseEventLoop): Default to None, the AsyncIO loop
+                to use for all async requests
+        """
+        self.base_url = base_url
+        self.auth_provider = auth_provider
+        self.http_provider = http_provider
+        self._loop = loop if loop else asyncio.get_event_loop()
+
+    @property
+    def auth_provider(self):
+        """Gets and sets the client auth provider
+
+        Returns:
+            :class:`AuthProviderBase<onedrivesdk.auth_provider_base.AuthProviderBase>`:
+            The authentication provider
+        """
+        return self._auth_provider
+
+    @auth_provider.setter
+    def auth_provider(self, value):
+        self._auth_provider = value
+
+    @property
+    def http_provider(self):
+        """Gets and sets the client HTTP provider
+
+        Returns:
+            :class:`HttpProviderBase<onedrivesdk.http_provider_base.HttpProviderBase>`:
+                The HTTP provider
+        """
+        return self._http_provider
+
+    @http_provider.setter
+    def http_provider(self, value):
+        self._http_provider = value
+
+    @property
+    def base_url(self):
+        """Gets and sets the base URL used by the client to make requests
+
+        Returns:
+            str: The base URL
+        """
+        return self._base_url
+
+    @base_url.setter
+    def base_url(self, value):
+        self._base_url = value
+
+
 class OneDriveFileDoneError(Exception):
     pass
-
-
-log = logging.getLogger(__name__)
-QXHASH_0 = b"\0" * 20
 
 
 class OneDriveInfo(DirInfo):
@@ -139,30 +376,21 @@ class OneDriveItem:
     """Use to covert oid to path or path to oid.   Don't try to keep it around, or reuse it."""
     def __init__(self, prov, *, oid=None, path=None, pid=None):
         self.__prov = prov
-        self.__item = None
 
         if (oid is None and path is None):
             raise ValueError("Must specify oid or path")
 
         if path == "/":
-            path = None
             oid = "root"
 
         if oid == "root":
             oid = prov.namespace.api_root_oid
+            path = "/"
 
         self.__oid = oid
         self.__path = path
         self.__pid = pid
-
-        if oid is not None:
-            self.__sdk_kws = {"id": oid}
-
-        if path:
-            self.__sdk_kws = {"path": path}
-
         self._drive_id: str = self.__prov._validated_namespace_id
-        self.__get = None
 
     @property
     def pid(self):
@@ -175,6 +403,7 @@ class OneDriveItem:
     @property
     def path(self):
         if not self.__path:
+            # TODO
             ret = self.get()
             if ret:
                 prdrive_path = ret.parent_reference.path
@@ -186,21 +415,6 @@ class OneDriveItem:
                     self.__path = self.__prov.join(prpath, ret.name)
         return self.__path
 
-    # todo: get rid of this
-    def _sdk_item(self):
-        if self.__item:
-            return self.__item
-
-        with self.__prov._api() as client:       # pylint:disable=protected-access
-            try:
-                self.__item = client.item(drive=self._drive_id, **self.__sdk_kws)
-            except ValueError:
-                raise CloudFileNotFoundError(f"Invalid item: {self.__sdk_kws}")
-            if self.__item is None:
-                raise CloudFileNotFoundError(f"Missing item: {self.__sdk_kws}")
-
-        return self.__item
-
     @property
     def api_path(self):
         if self.__oid:
@@ -210,25 +424,9 @@ class OneDriveItem:
             return f"/drives/{self._drive_id}/{self.__prov.namespace.api_root_path}:{enc_path}:"
         raise AssertionError("This should not happen, since __init__ verifies that there is one or the other")
 
-    def get(self):
-        if not self.__get:
-            self.__get = self._sdk_item().get()
-        return self.__get
-
     @property
     def drive_id(self):
         return self._drive_id
-
-    @property
-    def children(self):
-        return self._sdk_item().children
-
-    def update(self, info: onedrivesdk.Item):
-        return self._sdk_item().update(info)
-
-    @property
-    def content(self):
-        return self._sdk_item().content
 
 
 @dataclass
@@ -491,6 +689,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _fetch_sites(self):
         # sharepoint sites - a user can have access to multiple sites, with multiple drives in each
+        if self._is_consumer:
+            return
         sites = self._direct_api_error_trap("/sites?search=*", default={}).get("value", [])
         sites.sort(key=lambda s: (s.get("displayName") or s.get("name", "")).lower())
         for site in sites:
@@ -695,7 +895,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     creds = {"refresh_token": new_refresh}
                     self._oauth_config.creds_changed(creds)
 
-                self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, self._http)
+                #self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, self._http)
+                self.__client = OneDriveClient(self._base_url, auth_provider, self._http)
                 self._creds = creds
 
                 try:
@@ -953,7 +1154,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 req.method = "PUT"
                 try:
                     resp = req.send(data=file_like)
-                except onedrivesdk.error.OneDriveError as e:
+                except OneDriveError as e:
                     if e.code == ErrorCode.NotSupported:
                         raise CloudFileExistsError("Cannot upload to folder")
                     if e.code == ErrorCode.ResourceModified:
@@ -1137,11 +1338,17 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _info_from_rest(self, item, root=None):
         if not root:
-            raise NotImplementedError()
+            # parent reference path format is "drives/{drive_id}/root:/path/to/file"
+            # to get the file path, everything up to the first colon can be ignored
+            # See: https://docs.microsoft.com/en-us/graph/api/resources/itemreference?view=graph-rest-1.0
+            root = item["parentReference"].get("path", ":")
+            root = root.split(":", 1)[1]
+            log.warning("root:%s", root)
 
         name = item["name"]
-        path_orig = self.join(root, name)
+        path_orig = self.join(root, name) if root else "/"
         path = self._make_path_relative_to_shared_folder_if_needed(path_orig)
+        log.warning("here - %s %s", path_orig, path)
 
         iid = item["id"]
         ohash = None
@@ -1169,15 +1376,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         res = self._direct_api("get", f"{api_path}/children")
 
-        idir = self.info_oid(oid)
-        root = idir.path
+        #idir = self.info_oid(oid)
+        #root = idir.path
 
         items = res.get("value", [])
         next_link = res.get("@odata.nextLink")
 
         while items:
             for item in items:
-                yield self._info_from_rest(item, root=root)
+                yield self._info_from_rest(item)
 
             items = []
             if next_link:
@@ -1190,36 +1397,33 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         log.debug("mkdir %s", path)
 
         # boilerplate: probably belongs in base class
-        if self.exists_path(path):
-            info = self.info_path(path)
+        info = self.info_path(path)
+        if info:
             if info.otype == FILE:
                 raise CloudFileExistsError(path)
             log.info("Skipped creating already existing folder: %s", path)
             return info.oid
 
-        pid = self._get_parent_id(path=path)
-        log.debug("got pid %s", pid)
-
-        f = onedrivesdk.Folder()
-        i = onedrivesdk.Item()
-        _, name = self.split(path)
-        i.name = name
-        i.folder = f
-
+        parent_path, new_folder = self.split(path)
         with self._api() as client:
-            item = self._get_item(client, oid=pid).children.add(i)
-
-        return item.id
+            api_path = self._get_item(client, path=parent_path).api_path
+        log.debug("mkdir parent_path=%s", api_path)
+        data = {
+            "name": new_folder,
+            "folder": {},
+            "@microsoft.graph.conflictBehavior": "fail"
+        }
+        res = self._direct_api("post", f"{api_path}/children", json=data)
+        return res["id"]
 
     def delete(self, oid):
         try:
             with self._api() as client:
-                item = self._get_item(client, oid=oid).get()
-                if not item:
+                info = self.info_oid(oid)
+                if not info:
                     # I don't think this will ever happen...
                     log.info("deleted non-existing oid %s", debug_sig(oid))  # pragma: no cover
                     return  # file doesn't exist already...
-                info = self._info_item(item)
                 if info.otype == DIRECTORY:
                     try:
                         next(self.listdir(oid))
@@ -1356,18 +1560,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _info_oid(self, oid, path=None) -> Optional[OneDriveInfo]:
         try:
             with self._api() as client:
-                try:
-                    item = self._get_item(client, oid=oid).get()
-                except OneDriveError as e:
-                    log.info("info failure %s / %s", e, e.code)
-                    if e.code == 400:
-                        log.error("malformed oid %s: %s", oid, e)  # pragma: no cover
-                        # malformed oid == not found
-                        return None
-                    if "invalidclientquery" in str(e.code).lower():
-                        return None
-                    raise
-            return self._info_item(item, path=path)
+                item = self._get_item(client, oid=oid)
+
+            res = self._direct_api("get", item.api_path)
+            return self._info_from_rest(res)
         except CloudFileNotFoundError:
             return None
 

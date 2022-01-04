@@ -21,6 +21,12 @@ test: requirements
 	. env/$(ENVBIN)/activate && flit install
 	. env/$(ENVBIN)/activate && pytest -v --cov=. --cov-report=xml --durations=1 -n=2 --provider=onedrive,testodbiz tests
 
+test-dev:
+	- pyenv exec pytest -v --cov=. --cov-report=xml --durations=1 -n=2 --provider=onedrive,testodbiz tests
+
+test-conn:
+	- pyenv exec pytest -k test_connect_basic --provider=testodbiz,onedrive
+
 format:
 	autopep8 --in-place -r -j 8 cloudsync/
 

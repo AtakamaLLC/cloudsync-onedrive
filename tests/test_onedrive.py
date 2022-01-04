@@ -328,7 +328,7 @@ class FakeGraphApi(FakeApi):
 
         if meth == "POST" and "/children" in uri:
             self.called("mkdir", (uri,))
-            return {'something': 'here'}
+            return {"id": "oid"}
 
         log.debug("api: %s, %s %s", meth, uri, req)
         return {}
