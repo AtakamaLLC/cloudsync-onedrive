@@ -403,16 +403,7 @@ class OneDriveItem:
     @property
     def path(self):
         if not self.__path:
-            # TODO
-            ret = self.get()
-            if ret:
-                prdrive_path = ret.parent_reference.path
-                if not prdrive_path:
-                    self.__path = "/"
-                else:
-                    unused_preamble, prpath = prdrive_path.split(":")
-                    prpath = urllib.parse.unquote(prpath)
-                    self.__path = self.__prov.join(prpath, ret.name)
+            self.__path = self.__prov.info_oid(self.__oid).path
         return self.__path
 
     @property
@@ -1260,17 +1251,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             parent, base = self.split(path)
 
             item = self._get_item(client, oid=oid)
-            old_path = item.path
-
-            info = item.get()
-
-            old_parent_id = info.parent_reference.id
+            info = self.info_oid(oid)
+            old_path = info.path
+            old_parent_id = info.pid
 
             new_parent_info = self.info_path(parent)
             new_parent_id = new_parent_info.oid
 
             # support copy over an empty folder
-            if info.folder:
+            if info.otype == DIRECTORY:
                 try:
                     target_info = self.info_path(path)
                 except CloudFileNotFoundError:
@@ -1286,15 +1275,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             rename_json = {}
             if info.name != base:
                 rename_json["name"] = base
-                need_temp = item.path.lower() == path.lower()
+                need_temp = info.path.lower() == path.lower()
                 if need_temp:
                     temp_json = {"name": base + os.urandom(8).hex()}
-                    self._direct_api("patch", f"drives/{item.drive_id}/items/{item.oid}", json=temp_json)
+                    self._direct_api("patch", item.api_path, json=temp_json)
             if old_parent_id != new_parent_info.oid:
                 rename_json["parentReference"] = {"id": new_parent_id}
             if not rename_json:
                 return oid
-            ret = self._direct_api("patch", f"drives/{item.drive_id}/items/{item.oid}", json=rename_json)
+            ret = self._direct_api("patch", item.api_path, json=rename_json)
             if ret.get("status_code", 0) == 202:
                 # wait for move/copy to complete to get the new oid
                 new_oid = None
@@ -1315,7 +1304,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             raise CloudTemporaryError("rename did not change cloud file path")
 
         return oid
-
 
     @staticmethod
     def _parse_time(time_str):
@@ -1342,7 +1330,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             # to get the file path, everything up to the first colon can be ignored
             # See: https://docs.microsoft.com/en-us/graph/api/resources/itemreference?view=graph-rest-1.0
             root = item["parentReference"].get("path", ":")
-            root = root.split(":", 1)[1]
+            root = urllib.parse.unquote(root.split(":", 1)[1])
             log.warning("root:%s", root)
 
         name = item["name"]
