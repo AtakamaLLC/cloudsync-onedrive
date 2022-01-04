@@ -1402,7 +1402,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             "@microsoft.graph.conflictBehavior": "fail"
         }
         res = self._direct_api("post", f"{api_path}/children", json=data)
-        return res["id"]
+        oid = res.get("id")
+        if not oid:
+            raise CloudFileExistsError(f"failed to mkdir: %s", path)
+        return oid
 
     def delete(self, oid):
         try:
