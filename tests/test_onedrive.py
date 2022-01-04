@@ -276,6 +276,7 @@ class FakeGraphApi(FakeApi):
                     "name": "from_personal",
                     "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
                     "folder": {"childCount": 0},
+                    "lastModifiedDateTime": "2019-12-04T15:24:19.717Z",
                     "parentReference": {
                         "driveId": "DRIVE_ID_20",
                         "driveType": "business",
