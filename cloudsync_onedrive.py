@@ -1250,10 +1250,13 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             self._verify_parent_folder_exists(path)
             parent, base = self.split(path)
 
-            item = self._get_item(client, oid=oid)
             info = self.info_oid(oid)
+            if not info:
+                raise CloudFileNotFoundError("oid not found: %s", oid)
+
             old_path = info.path
             old_parent_id = info.pid
+            item = self._get_item(client, oid=oid)
 
             new_parent_info = self.info_path(parent)
             new_parent_id = new_parent_info.oid
