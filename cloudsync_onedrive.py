@@ -504,7 +504,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         super().__init__()
         self._creds: Optional[Dict[str, str]] = None
         self.__cursor: Optional[str] = None
-        self.__client: onedrivesdk.OneDriveClient = None
+        self.__client: OneDriveClient = None
         self._mutex = threading.RLock()
         self._oauth_config = oauth_config
         self._namespace: Optional[Drive] = None
@@ -886,7 +886,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     creds = {"refresh_token": new_refresh}
                     self._oauth_config.creds_changed(creds)
 
-                #self.__client = onedrivesdk.OneDriveClient(self._base_url, auth_provider, self._http)
                 self.__client = OneDriveClient(self._base_url, auth_provider, self._http)
                 self._creds = creds
 
