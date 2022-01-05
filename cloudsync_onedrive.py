@@ -1141,24 +1141,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         size = _get_size_and_seek0(file_like)
         if size == 0:
             with self._api() as client:
-                req = self._get_item(client, oid=oid).content.request()
-                req.method = "PUT"
-                try:
-                    resp = req.send(data=file_like)
-                except OneDriveError as e:
-                    if e.code == ErrorCode.NotSupported:
-                        raise CloudFileExistsError("Cannot upload to folder")
-                    if e.code == ErrorCode.ResourceModified:
-                        # onedrive ocassionally reports etag mismatch errors, even when there's no possibility of conflict
-                        # simply retrying here vastly reduces the number of false positive failures
-                        resp = req.send(data=file_like)
-                    else:
-                        raise
-
-                log.debug("uploaded: %s", resp.content)
-                # TODO: why not just info_from_rest?
-                item = onedrivesdk.Item(json.loads(resp.content))
-                return self._info_item(item)
+                api_path = self._get_item(client, oid=oid).api_path
+                # TODO: retry on error
+                resp = self._direct_api("put", f"{api_path}/content", data=file_like)
+                log.debug("uploaded: %s", resp.get("content"))
+                log.warning(resp)
+                return self._info_from_rest(resp)
         else:
             with self._api() as client:
                 info = self.info_oid(oid)
