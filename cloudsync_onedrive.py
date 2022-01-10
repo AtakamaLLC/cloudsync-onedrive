@@ -844,11 +844,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             self._ensure_event_loop()
 
             with self._api(needs_client=False):
-                auth_provider = onedrivesdk.AuthProvider(
-                        http_provider=self._http,
-                        client_id=self._oauth_config.app_id,
-                        scopes=self._oauth_info.scopes)
-
                 class MySession(onedrivesdk.session.Session):   # pylint: disable=too-few-public-methods
                     def __init__(self, **kws):  # pylint: disable=super-init-not-called
                         self.__dict__ = kws
@@ -1353,10 +1348,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             api_path = self._get_item(client, oid=oid).api_path
 
         res = self._direct_api("get", f"{api_path}/children")
-
-        #idir = self.info_oid(oid)
-        #root = idir.path
-
         items = res.get("value", [])
         next_link = res.get("@odata.nextLink")
 
