@@ -1241,7 +1241,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             item = self._get_item(client, oid=oid)
 
             new_parent_info = self.info_path(parent)
-            new_parent_id = new_parent_info.oid
+            new_parent_id = self.globalize_oid(new_parent_info.oid)
 
             # support copy over an empty folder
             if info.otype == DIRECTORY:
@@ -1264,7 +1264,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 if need_temp:
                     temp_json = {"name": base + os.urandom(8).hex()}
                     self._direct_api("patch", item.api_path, json=temp_json)
-            if old_parent_id != new_parent_info.oid:
+            if old_parent_id != new_parent_id:
                 rename_json["parentReference"] = {"id": new_parent_id}
             if not rename_json:
                 return oid
@@ -1283,7 +1283,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     raise CloudFileNotFoundError("oid lookup failed after move/copy")
                 oid = new_oid
 
-        new_path = self._get_path(oid)
+        new_path = self._info_oid(oid).path
         if self.paths_match(old_path, new_path, for_display=True): # pragma: no cover
             log.error("rename did not change cloud file path: old=%s new=%s", old_path, new_path)
             raise CloudTemporaryError("rename did not change cloud file path")
@@ -1314,14 +1314,17 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             # parent reference path format is "drives/{drive_id}/root:/path/to/file"
             # to get the file path, everything up to the first colon can be ignored
             # See: https://docs.microsoft.com/en-us/graph/api/resources/itemreference?view=graph-rest-1.0
-            root = item["parentReference"].get("path", ":")
-            root = urllib.parse.unquote(root.split(":", 1)[1])
-            log.warning("root:%s", root)
+
+            # Note:
+            # parentReference.path missing -- item is the drive root dir
+            # parentReference.path = "drives/{drive_id}/root:" -- item is a file or folder in the root dir
+            parent_ref = item["parentReference"]
+            if "path" in parent_ref:
+                root = urllib.parse.unquote(parent_ref["path"].split(":", 1)[1]) or "/"
 
         name = item["name"]
         path_orig = self.join(root, name) if root else "/"
         path = self._make_path_relative_to_shared_folder_if_needed(path_orig)
-        log.warning("here - %s %s", path_orig, path)
 
         iid = item["id"]
         ohash = None
@@ -1373,9 +1376,13 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             log.info("Skipped creating already existing folder: %s", path)
             return info.oid
 
-        parent_path, new_folder = self.split(path)
+        pid = self._get_parent_id(path=path)
+        log.debug("got pid %s", pid)
+
+        _, new_folder = self.split(path)
         with self._api() as client:
-            api_path = self._get_item(client, path=parent_path).api_path
+            api_path = self._get_item(client, oid=pid).api_path
+
         log.debug("mkdir parent_path=%s", api_path)
         data = {
             "name": new_folder,
@@ -1510,21 +1517,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if not client:
             raise CloudDisconnectedError("Not connected")
         return OneDriveItem(self, oid=oid, path=path)
-
-    def _get_path(self, oid=None) -> Optional[str]:
-        """get path using oid or item"""
-        # TODO: implement caching
-
-        try:
-            with self._api() as client:
-                item = self._get_item(client, oid=oid)
-
-                if item is not None:
-                    return item.path
-
-                raise ValueError("_box_get_path requires oid or item")
-        except CloudFileNotFoundError:
-            return None
 
     def info_oid(self, oid: str, use_cache=True) -> Optional[OneDriveInfo]:
         return self._info_oid(oid)
