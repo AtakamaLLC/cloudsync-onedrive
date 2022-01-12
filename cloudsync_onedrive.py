@@ -20,14 +20,11 @@ import json
 import enum
 from typing import Generator, Optional, Dict, Iterable, List, Set, Union, cast
 import urllib.parse
-import webbrowser
 from base64 import b64encode
 from dataclasses import dataclass, field, fields
 import time
 import requests
 import arrow
-
-import onedrivesdk_fork as onedrivesdk
 
 from cloudsync import Provider, Namespace, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo
 from cloudsync.exceptions import CloudTokenError, CloudDisconnectedError, CloudFileNotFoundError, \
@@ -357,10 +354,6 @@ class OneDriveInfo(DirInfo):
         self.path_orig = path_orig
 
 
-def open_url(url):
-    webbrowser.open(url)
-
-
 def _get_size_and_seek0(file_like):
     file_like.seek(0, os.SEEK_END)
     size = file_like.tell()
@@ -494,8 +487,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         scopes=['profile', 'openid', 'email', 'files.readwrite.all', 'sites.readwrite.all', 'offline_access'],
     )
 
-    _additional_invalid_characters = '#'
-
     def __init__(self, oauth_config: Optional[OAuthConfig] = None):
         super().__init__()
         self._creds: Optional[Dict[str, str]] = None
@@ -542,9 +533,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             if not url:
                 path = path.lstrip("/")
                 url = client.base_url + path
+
+            access_token = self._auth_tokens["access_token"]
             head = {
-                      'Authorization': f'bearer {client.auth_provider.access_token}',
-                      'content-type': 'application/json'}
+                'Authorization': f'bearer {access_token}',
+                'content-type': 'application/json'
+            }
             if headers:
                 head.update(headers)
             for k, v in head.items():
@@ -830,54 +824,21 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def connect_impl(self, creds):
         if not self.__client or creds != self._creds:
-            if not creds:
-                raise CloudTokenError("no credentials")
             log.info('Connecting to One Drive')
-            refresh_token = creds.get("refresh", creds.get("refresh_token"))
-            if not refresh_token:
-                raise CloudTokenError("no refresh token, refusing connection")
 
+            # TODO: remove
             self._ensure_event_loop()
 
             with self._api(needs_client=False):
-                class MySession(onedrivesdk.session.Session):   # pylint: disable=too-few-public-methods
-                    def __init__(self, **kws):  # pylint: disable=super-init-not-called
-                        self.__dict__ = kws
-
-                    @staticmethod
-                    def load_session(**kws):
-                        _ = kws
-                        return MySession(
-                            refresh_token=refresh_token,
-                            access_token=creds.get("access_token", None),
-                            redirect_uri=None,  # pylint: disable=protected-access
-                            auth_server_url=self._oauth_info.token_url,  # pylint: disable=protected-access
-                            client_id=self._oauth_config.app_id,  # pylint: disable=protected-access
-                            client_secret=self._oauth_config.app_secret,  # pylint: disable=protected-access
-                        )
-
-                auth_provider = onedrivesdk.AuthProvider(
-                        http_provider=self._http,
-                        client_id=self._oauth_config.app_id,
-                        session_type=MySession,
-                        scopes=self._oauth_info.scopes)
-
-                auth_provider.load_session()
                 try:
-                    auth_provider.refresh_token()
+                    self._get_auth_tokens(creds)
                 except requests.exceptions.ConnectionError:
                     raise CloudDisconnectedError("ConnectionError while authenticating")
                 except Exception as e:
                     log.exception("exception while authenticating: %s", e)
                     raise CloudTokenError(str(e))
 
-                new_refresh = auth_provider._session.refresh_token      # pylint: disable=protected-access
-                if new_refresh and new_refresh != refresh_token:
-                    log.info("creds have changed")
-                    creds = {"refresh_token": new_refresh}
-                    self._oauth_config.creds_changed(creds)
-
-                self.__client = OneDriveClient(self._base_url, auth_provider, self._http)
+                self.__client = OneDriveClient(self._base_url, None, self._http)
                 self._creds = creds
 
                 try:
@@ -893,6 +854,36 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     raise
 
         return self._personal_drive.drives[0].drive_id
+
+    def _get_auth_tokens(self, creds: Dict[str, str]):
+        if not creds:
+            raise CloudTokenError("no credentials")
+
+        refresh_token = creds.get("refresh", creds.get("refresh_token"))
+        if not refresh_token:
+            raise CloudTokenError("no refresh token, refusing connection")
+
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+        params = {
+            "refresh_token": refresh_token,
+            "client_id": self._oauth_config.app_id,
+            "redirect_uri": None,
+            "grant_type": "refresh_token",
+        }
+        if self._oauth_config.app_secret is not None:
+            params["client_secret"] = self._oauth_config.app_secret
+
+        response = self._http.send(method="POST",
+                                   headers=headers,
+                                   url=self._oauth_info.token_url,
+                                   data=params)
+
+        self._auth_tokens = json.loads(response.content)
+        new_refresh_token = self._auth_tokens["refresh_token"]
+        if new_refresh_token != refresh_token:
+            log.info("creds have changed")
+            self._oauth_config.creds_changed(self._auth_tokens)
 
     def _api(self, *args, needs_client=True, **kwargs):  # pylint: disable=arguments-differ
         if needs_client and not self.__client:
