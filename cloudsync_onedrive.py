@@ -1311,13 +1311,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _info_from_rest(self, item, root=None):
         if not root:
-            # parent reference path format is "drives/{drive_id}/root:/path/to/file"
-            # to get the file path, everything up to the first colon can be ignored
+            # parentReference.path format is: "drives/{drive_id}/root:/path/to/file"
+            # To get the file path, everything up to and including the first ":" can be ignored
             # See: https://docs.microsoft.com/en-us/graph/api/resources/itemreference?view=graph-rest-1.0
-
             # Note:
-            # parentReference.path missing -- item is the drive root dir
-            # parentReference.path = "drives/{drive_id}/root:" -- item is a file or folder in the root dir
+            #   - if parentReference.path missing -- item is the drive root dir
+            #   - if parentReference.path == "drives/{drive_id}/root:" -- parent is the drive root dir
             parent_ref = item["parentReference"]
             if "path" in parent_ref:
                 root = urllib.parse.unquote(parent_ref["path"].split(":", 1)[1]) or "/"
