@@ -342,6 +342,7 @@ def fake_odp():
     base_url = srv.uri()
     with patch.object(OneDriveProvider, "_base_url", base_url):
         prov = fake_oauth_provider(srv, OneDriveProvider)
+        prov._base_url = base_url
         assert srv.calls["token"]
         assert srv.calls["_fetch_personal_drives"]
         # onedrive saves refresh token if creds change

@@ -14,7 +14,6 @@ import re
 import logging
 from pprint import pformat
 import threading
-import asyncio
 import hashlib
 import json
 import enum
@@ -445,13 +444,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def connected(self):
         return self.__client is not None
 
-    @staticmethod
-    def _ensure_event_loop():
-        try:
-            asyncio.get_event_loop()
-        except RuntimeError:
-            asyncio.set_event_loop(asyncio.new_event_loop())
-
     def _get_url(self, api_path):
         api_path = api_path.lstrip("/")
         with self._api() as client:
@@ -762,9 +754,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if not self.__client or creds != self._creds:
             log.info('Connecting to One Drive')
 
-            # TODO: remove
-            self._ensure_event_loop()
-
             with self._api(needs_client=False):
                 try:
                     self._get_auth_tokens(creds)
@@ -775,7 +764,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     raise CloudTokenError(str(e))
 
                 self.__client = object()
-                self._creds = creds
 
                 try:
                     self._fetch_drive_list(clear_cache=True)
@@ -817,9 +805,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         self._auth_tokens = json.loads(response.content)
         new_refresh_token = self._auth_tokens["refresh_token"]
+        self._creds = {"refresh_token": new_refresh_token}
         if new_refresh_token != refresh_token:
             log.info("creds have changed")
-            self._oauth_config.creds_changed(self._auth_tokens)
+            self._oauth_config.creds_changed(self._creds)
+
 
     def _api(self, *args, needs_client=True, **kwargs):  # pylint: disable=arguments-differ
         if needs_client and not self.__client:
