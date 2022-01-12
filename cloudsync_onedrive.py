@@ -6,7 +6,6 @@ Onedrive provider
 
 # https://dev.onedrive.com/
 # https://docs.microsoft.com/en-us/onedrive/developer/rest-api/concepts/upload?view=odsp-graph-online
-# https://github.com/OneDrive/onedrive-sdk-python
 # https://docs.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/msa-oauth?view=odsp-graph-online
 # https://docs.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online
 import os
@@ -426,7 +425,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         super().__init__()
         self._creds: Optional[Dict[str, str]] = None
         self.__cursor: Optional[str] = None
-        self.__client: OneDriveClient = None
+        self.__client: object = None
         self._mutex = threading.RLock()
         self._oauth_config = oauth_config
         self._namespace: Optional[Drive] = None
@@ -437,8 +436,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self.__drive_by_id: Dict[str, Drive] = {}
         self.__site_by_id: Dict[str, Site] = {}
         self.__cached_is_biz = None
-        self._http = HttpProvider()
-
+        self._http = requests.Session()
 
     @property
     def connected(self):
@@ -472,7 +470,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             for k, v in head.items():
                 head[k] = str(v)
             log.debug("direct %s %s", action, url)
-            req = self._http.session.request(
+            req = self._http.request(
                 action,
                 url,
                 stream=stream,
@@ -798,10 +796,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if self._oauth_config.app_secret is not None:
             params["client_secret"] = self._oauth_config.app_secret
 
-        response = self._http.send(method="POST",
-                                   headers=headers,
-                                   url=self._oauth_info.token_url,
-                                   data=params)
+        response = self._http.request("POST",
+                                      self._oauth_info.token_url,
+                                      headers=headers,
+                                      data=params)
 
         self._auth_tokens = json.loads(response.content)
         new_refresh_token = self._auth_tokens["refresh_token"]

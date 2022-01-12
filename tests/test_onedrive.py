@@ -702,7 +702,7 @@ def test_cursor_error():
         resp.status_code = 410
         return resp
 
-    with patch.object(odp._http.session, "request", return_410):
+    with patch.object(odp._http, "request", return_410):
         with pytest.raises(CloudCursorError):
             list(odp.events())
 
@@ -712,7 +712,7 @@ def test_cursor_error():
         resp.json = lambda **kwargs: {"error": {"message": "malformed sync token", "code": ErrorCode.InvalidRequest}}
         return resp
 
-    with patch.object(odp._http.session, "request", return_400), patch.object(odp, "_check_ns", return_value=True):
+    with patch.object(odp._http, "request", return_400), patch.object(odp, "_check_ns", return_value=True):
         with pytest.raises(CloudCursorError):
             list(odp.events())
 
