@@ -38,11 +38,11 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
+__version__ = "3.1.11"  # pragma: no cover
+
 log = logging.getLogger(__name__)
 
 QXHASH_0 = b"\0" * 20
-
-__version__ = "3.1.10"  # pragma: no cover
 
 SOCK_TIMEOUT = 180
 
@@ -342,10 +342,6 @@ class OneDriveClient:
     @base_url.setter
     def base_url(self, value):
         self._base_url = value
-
-
-class OneDriveFileDoneError(Exception):
-    pass
 
 
 class OneDriveInfo(DirInfo):
