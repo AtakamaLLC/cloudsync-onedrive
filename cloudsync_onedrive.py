@@ -693,7 +693,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             log.info("creds have changed")
             self._oauth_config.creds_changed(self._creds)
 
-
     def _api(self, *args, needs_client=True, **kwargs):  # pylint: disable=arguments-differ
         if needs_client and not self.__client:
             raise CloudDisconnectedError("currently disconnected")
