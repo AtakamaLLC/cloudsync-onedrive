@@ -57,73 +57,6 @@ class EventFilter(enum.Enum):
         raise ValueError("never bool enums")
 
 
-class OneDriveError(Exception):
-
-    def __init__(self, prop_dict, status_code):
-        """Initialize a OneDriveError given the JSON
-        error response dictionary, and the HTTP status code
-
-        Args:
-            prop_dict (dict): A dictionary containing the response
-                from OneDrive
-            status_code (int): The HTTP status code (ex. 200, 201, etc.)
-        """
-        if "code" not in prop_dict or "message" not in prop_dict:
-            prop_dict["code"] = ErrorCode.Malformed
-            prop_dict["message"] = "The received response was malformed"
-            super(OneDriveError, self).__init__(prop_dict["code"]+" - "+prop_dict["message"])
-        else:
-            super(OneDriveError, self).__init__(prop_dict["code"]+" - "+prop_dict["message"])
-        self._prop_dict = prop_dict
-        self._status_code = status_code
-
-    @property
-    def status_code(self):
-        """The HTTP status code
-
-        Returns:
-            int: The HTTP status code
-        """
-        return self._status_code
-
-    @property
-    def code(self):
-        """The OneDrive error code sent back in
-        the response. Possible codes can be found
-        in the :class:`ErrorCode` enum.
-
-        Returns:
-            str: The error code
-        """
-        return self._prop_dict["code"]
-
-    @property
-    def inner_error(self):
-        """Creates a OneDriveError object from the specified inner
-        error within the response.
-
-        Returns:
-            :class:`OneDriveError`: Error from within the inner
-                response
-        """
-        return OneDriveError(self._prop_dict["innererror"], self.status_code) if "innererror" in self._prop_dict else None
-
-    def matches(self, code):
-        """Recursively searches the :class:`OneDriveError` to find
-        if the specified code was found
-
-        Args:
-            code (str): The error code to search for
-
-        Returns:
-            bool: True if the error code was found, false otherwise
-        """
-        if self.code == code:
-            return True
-
-        return False if self.inner_error is None else self.inner_error.matches(code)
-
-
 class ErrorCode(object):
     #: Access was denied to the resource
     AccessDenied = "accessDenied"
@@ -699,7 +632,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return self
 
     def __enter__(self):
-        self._mutex.__enter__()  # pylint: disable=consider-using-with
+        self._mutex.__enter__()
         return self.__client
 
     def __exit__(self, ty, ex, tb):
@@ -713,9 +646,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             except (TimeoutError, ):
                 self.disconnect()
                 raise CloudDisconnectedError("disconnected on timeout")
-            except OneDriveError as e:
-                if not self._raise_converted_error(ex=e):
-                    raise
             except IOError as e:
                 raise CloudTemporaryError(f"io error {repr(e)}")
             except Exception:
