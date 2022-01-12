@@ -683,7 +683,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         response = self._http.request("POST",
                                       self._oauth_info.token_url,
                                       headers=headers,
-                                      data=params)
+                                      data=params,
+                                      timeout=SOCK_TIMEOUT)
 
         self._auth_tokens = json.loads(response.content)
         new_refresh_token = self._auth_tokens["refresh_token"]
