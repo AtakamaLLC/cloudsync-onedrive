@@ -277,70 +277,6 @@ class HttpProvider:
         return custom_response
 
 
-class OneDriveClient:
-
-    def __init__(self, base_url, auth_provider, http_provider, loop=None):
-        """Initialize the :class:`OneDriveClient` to be
-            used for all OneDrive API interactions
-
-        Args:
-            base_url (str): The OneDrive base url to use for API interactions
-            auth_provider(:class:`AuthProviderBase<onedrivesdk.auth_provider_base.AuthProviderBase>`):
-                The authentication provider used by the client to auth
-                with OneDrive services
-            http_provider(:class:`HttpProviderBase<onedrivesdk.http_provider_base.HttpProviderBase>`):
-                The HTTP provider used by the client to send all
-                requests to OneDrive
-            loop (BaseEventLoop): Default to None, the AsyncIO loop
-                to use for all async requests
-        """
-        self.base_url = base_url
-        self.auth_provider = auth_provider
-        self.http_provider = http_provider
-        self._loop = loop if loop else asyncio.get_event_loop()
-
-    @property
-    def auth_provider(self):
-        """Gets and sets the client auth provider
-
-        Returns:
-            :class:`AuthProviderBase<onedrivesdk.auth_provider_base.AuthProviderBase>`:
-            The authentication provider
-        """
-        return self._auth_provider
-
-    @auth_provider.setter
-    def auth_provider(self, value):
-        self._auth_provider = value
-
-    @property
-    def http_provider(self):
-        """Gets and sets the client HTTP provider
-
-        Returns:
-            :class:`HttpProviderBase<onedrivesdk.http_provider_base.HttpProviderBase>`:
-                The HTTP provider
-        """
-        return self._http_provider
-
-    @http_provider.setter
-    def http_provider(self, value):
-        self._http_provider = value
-
-    @property
-    def base_url(self):
-        """Gets and sets the base URL used by the client to make requests
-
-        Returns:
-            str: The base URL
-        """
-        return self._base_url
-
-    @base_url.setter
-    def base_url(self, value):
-        self._base_url = value
-
-
 class OneDriveInfo(DirInfo):
     pid: str = None
     path_orig: str = None
@@ -519,7 +455,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def _get_url(self, api_path):
         api_path = api_path.lstrip("/")
         with self._api() as client:
-            return client.base_url.rstrip("/") + "/" + api_path
+            return self._base_url.rstrip("/") + "/" + api_path
 
     # names of args are compat with requests module
     def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None,
@@ -532,7 +468,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         with self._api() as client:
             if not url:
                 path = path.lstrip("/")
-                url = client.base_url + path
+                url = self._base_url + path
 
             access_token = self._auth_tokens["access_token"]
             head = {
@@ -838,7 +774,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     log.exception("exception while authenticating: %s", e)
                     raise CloudTokenError(str(e))
 
-                self.__client = OneDriveClient(self._base_url, None, self._http)
+                self.__client = object()
                 self._creds = creds
 
                 try:
