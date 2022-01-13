@@ -118,10 +118,10 @@ def _get_size_and_seek0(file_like):
 
 class OneDriveItem:
     """Use to covert oid to path or path to oid.   Don't try to keep it around, or reuse it."""
-    def __init__(self, prov, *, oid=None, path=None, pid=None):
+    def __init__(self, prov, *, oid=None, path=None):
         self.__prov = prov
 
-        if (oid is None and path is None):
+        if oid is None and path is None:
             raise ValueError("Must specify oid or path")
 
         if path == "/":
@@ -133,12 +133,7 @@ class OneDriveItem:
 
         self.__oid = oid
         self.__path = path
-        self.__pid = pid
         self._drive_id: str = self.__prov._validated_namespace_id
-
-    @property
-    def pid(self):
-        return self.__pid
 
     @property
     def oid(self):
