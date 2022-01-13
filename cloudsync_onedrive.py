@@ -11,6 +11,7 @@ Onedrive provider
 import os
 import re
 import logging
+import typing
 from pprint import pformat
 import threading
 import hashlib
@@ -32,6 +33,9 @@ from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
+
+if typing.TYPE_CHECKING:
+    from cloudsync import OInfo
 
 __version__ = "3.1.11"  # pragma: no cover
 
@@ -1149,32 +1153,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return self._info_from_rest(res, root=self.dirname(path))
         except CloudFileNotFoundError:
             return None
-
-    def _info_item(self, item, path=None) -> OneDriveInfo:
-        if item.folder:
-            otype = DIRECTORY
-            ohash = None
-        else:
-            otype = FILE
-
-            if self._is_biz:
-                if item.file.hashes is None:
-                    # This is the quickxor hash of b""
-                    ohash = QXHASH_0
-                else:
-                    ohash = item.file.hashes.to_dict()["quickXorHash"]
-            else:
-                ohash = item.file.hashes.to_dict()["sha1Hash"]
-
-        pid = item.parent_reference.id
-        odi = OneDriveItem(self, oid=item.id, path=path, pid=pid)
-        path_orig = path or odi.path
-        path = self._make_path_relative_to_shared_folder_if_needed(path_orig)
-        mtime = item.last_modified_date_time
-        mtime = mtime and self._parse_time(mtime)
-
-        return OneDriveInfo(oid=odi.oid, otype=otype, hash=ohash, path=path, path_orig=path_orig, pid=odi.pid, name=item.name,
-                            mtime=mtime, shared=item.shared, size=item.size)
 
     def exists_path(self, path) -> bool:
         try:
