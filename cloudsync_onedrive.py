@@ -24,7 +24,7 @@ import time
 import requests
 import arrow
 
-from cloudsync import Provider, Namespace, OInfo, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo
+from cloudsync import Provider, Namespace, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo
 from cloudsync.exceptions import CloudTokenError, CloudDisconnectedError, CloudFileNotFoundError, \
     CloudFileExistsError, CloudCursorError, CloudTemporaryError, CloudNamespaceError
 from cloudsync.oauth import OAuthConfig, OAuthProviderInfo
@@ -1135,7 +1135,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def exists_oid(self, oid):
         return self.info_oid(oid) is not None
 
-    def info_path(self, path: str, use_cache=True) -> Optional[OInfo]:
+    def info_path(self, path: str, use_cache=True) -> Optional[OneDriveInfo]:
         log.debug("info path %s", path)
         try:
             if path == "/":
