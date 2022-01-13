@@ -856,7 +856,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 # TODO: retry on error
                 resp = self._direct_api("put", f"{api_path}/content", data=file_like)
                 log.debug("uploaded: %s", resp.get("content"))
-                log.warning(resp)
                 return self._info_from_rest(resp)
         else:
             with self._api() as client:
@@ -1032,7 +1031,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             # To get the file path, everything up to and including the first ":" can be ignored
             # See: https://docs.microsoft.com/en-us/graph/api/resources/itemreference?view=graph-rest-1.0
             # Note:
-            #   - if parentReference.path missing -- item is the drive root dir
+            #   - if parentReference.path is missing -- item is the drive root dir
             #   - if parentReference.path == "drives/{drive_id}/root:" -- parent is the drive root dir
             parent_ref = item["parentReference"]
             if "path" in parent_ref:
@@ -1072,6 +1071,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         while items:
             for item in items:
+                # TODO: pass in root to save API hits
                 yield self._info_from_rest(item)
 
             items = []
