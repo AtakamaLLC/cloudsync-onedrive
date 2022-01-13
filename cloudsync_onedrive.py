@@ -11,13 +11,12 @@ Onedrive provider
 import os
 import re
 import logging
-import typing
 from pprint import pformat
 import threading
 import hashlib
 import json
 import enum
-from typing import Generator, Optional, Dict, Iterable, List, Set, Union, cast
+from typing import Generator, Optional, Dict, Iterable, List, Set, Union, cast, TYPE_CHECKING
 import urllib.parse
 from base64 import b64encode
 from dataclasses import dataclass, field, fields
@@ -34,7 +33,7 @@ from cloudsync.utils import debug_sig, memoize
 
 import quickxorhash
 
-if typing.TYPE_CHECKING:
+if TYPE_CHECKING:
     from cloudsync import OInfo
 
 __version__ = "3.1.11"  # pragma: no cover
@@ -153,10 +152,6 @@ class OneDriveItem:
             enc_path = urllib.parse.quote(self.__path)
             return f"/drives/{self._drive_id}/{self.__prov.namespace.api_root_path}:{enc_path}:"
         raise AssertionError("This should not happen, since __init__ verifies that there is one or the other")
-
-    @property
-    def drive_id(self):
-        return self._drive_id
 
 
 @dataclass
@@ -298,7 +293,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return {}
 
         if req.status_code > 202:
-            if not self._raise_converted_error(req=req):
+            if not self._raise_converted_error(req):
                 raise Exception(f"Unknown error {req.status_code} {req.json()}")
 
         if stream:
@@ -472,22 +467,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         res = self._direct_api("get", f"/drives/{nsid}/items/{self.namespace.api_root_oid}", raw_response=True)
         return res.status_code < 300
 
-    def _raise_converted_error(self, *, ex=None, req=None):      # pylint: disable=too-many-branches, too-many-statements
-        status = 0
-        if ex is not None:
-            status = ex.status_code
-            msg = str(ex)
-            code = ex.code
-
-        if req is not None:
-            status = req.status_code
-            try:
-                dat = req.json()
-                msg = dat["error"]["message"]
-                code = dat["error"]["code"]
-            except json.JSONDecodeError:
-                msg = 'Bad Json'
-                code = 'BadRequest'
+    def _raise_converted_error(self, req):      # pylint: disable=too-many-branches, too-many-statements
+        status = req.status_code
+        try:
+            dat = req.json()
+            msg = dat["error"]["message"]
+            code = dat["error"]["code"]
+        except json.JSONDecodeError:
+            msg = 'Bad Json'
+            code = 'BadRequest'
 
         if status == 400 and not self._check_ns(self._validated_namespace_id, self.connection_id):
             raise CloudNamespaceError(msg)
@@ -500,7 +488,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             raise CloudFileNotFoundError(msg)
 
         if status < 300:
-            log.error("Not converting err %s: %s %s", status, ex, req)
+            log.error("Not converting err %s: %s", status, req)
             return False
 
         if status == 404:
@@ -521,6 +509,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if code == ErrorCode.NameAlreadyExists:
             raise CloudFileExistsError(msg)
         if code == ErrorCode.AccessDenied:
+            raise CloudFileExistsError(msg)
+        if code == ErrorCode.NotSupported:
             raise CloudFileExistsError(msg)
         if status == 401:
             self.disconnect()
@@ -852,8 +842,13 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if size == 0:
             with self._api() as client:
                 api_path = self._get_item(client, oid=oid).api_path
-                # TODO: retry on error
-                resp = self._direct_api("put", f"{api_path}/content", data=file_like)
+                try:
+                    resp = self._direct_api("put", f"{api_path}/content", data=file_like)
+                except CloudTemporaryError:
+                    # onedrive occasionally reports etag mismatch errors, even when there's no possibility of conflict
+                    # simply retrying here vastly reduces the number of false positive failures
+                    resp = self._direct_api("put", f"{api_path}/content", data=file_like)
+
                 log.debug("uploaded: %s", resp.get("content"))
                 return self._info_from_rest(resp)
         else:
@@ -1070,7 +1065,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
         while items:
             for item in items:
-                # TODO: pass in root to save API hits
                 yield self._info_from_rest(item)
 
             items = []
