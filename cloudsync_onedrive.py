@@ -57,7 +57,7 @@ class EventFilter(enum.Enum):
         raise ValueError("never bool enums")
 
 
-class ErrorCode(object):
+class ErrorCode:
     #: Access was denied to the resource
     AccessDenied = "accessDenied"
     #: The activity limit has been reached
@@ -245,6 +245,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self.__client: object = None
         self._mutex = threading.RLock()
         self._oauth_config = oauth_config
+        self._auth_tokens: Optional[Dict[str, str]] = None
         self._namespace: Optional[Drive] = None
         self._personal_drive: Site = Site("Personal", "personal")
         self._shared_with_me: Site = Site("Shared With Me", "shared")
@@ -259,24 +260,15 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     def connected(self):
         return self.__client is not None
 
-    def _get_url(self, api_path):
-        api_path = api_path.lstrip("/")
-        with self._api() as client:
-            return self._base_url.rstrip("/") + "/" + api_path
-
     # names of args are compat with requests module
     def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None,
             json=None, raw_response=False, timeout=SOCK_TIMEOUT):  # pylint: disable=redefined-outer-name
         assert path or url
 
         if not url:
-            url = self._get_url(path)
+            url = self._base_url.rstrip("/") + "/" + path.lstrip("/")
 
-        with self._api() as client:
-            if not url:
-                path = path.lstrip("/")
-                url = self._base_url + path
-
+        with self._api():
             access_token = self._auth_tokens["access_token"]
             head = {
                 'Authorization': f'bearer {access_token}',
@@ -959,7 +951,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
             info = self.info_oid(oid)
             if not info:
-                raise CloudFileNotFoundError("oid not found: %s", oid)
+                raise CloudFileNotFoundError(f"oid not found:{oid}")
 
             old_path = info.path
             old_parent_id = info.pid
@@ -1008,7 +1000,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     raise CloudFileNotFoundError("oid lookup failed after move/copy")
                 oid = new_oid
 
-        new_path = self._info_oid(oid).path
+        new_path = self.info_oid(oid).path
         if self.paths_match(old_path, new_path, for_display=True): # pragma: no cover
             log.error("rename did not change cloud file path: old=%s new=%s", old_path, new_path)
             raise CloudTemporaryError("rename did not change cloud file path")
@@ -1116,7 +1108,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         res = self._direct_api("post", f"{api_path}/children", json=data)
         oid = res.get("id")
         if not oid:
-            raise CloudFileExistsError(f"failed to mkdir: %s", path)
+            raise CloudFileExistsError(f"failed to mkdir: {path}")
         return oid
 
     def delete(self, oid):
@@ -1141,7 +1133,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return self.info_oid(oid).oid if oid == "root" else oid
 
     def exists_oid(self, oid):
-        return self._info_oid(oid, path=False) is not None
+        return self.info_oid(oid) is not None
 
     def info_path(self, path: str, use_cache=True) -> Optional[OInfo]:
         log.debug("info path %s", path)
@@ -1243,9 +1235,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return OneDriveItem(self, oid=oid, path=path)
 
     def info_oid(self, oid: str, use_cache=True) -> Optional[OneDriveInfo]:
-        return self._info_oid(oid)
-
-    def _info_oid(self, oid, path=None) -> Optional[OneDriveInfo]:
         try:
             with self._api() as client:
                 item = self._get_item(client, oid=oid)
