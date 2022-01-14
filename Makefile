@@ -8,7 +8,7 @@ endif
 BASE := $(shell git merge-base HEAD origin/master)
 
 env:
-	virtualenv env
+	python -m virtualenv env
 
 requirements: env
 	. env/$(ENVBIN)/activate && pip install -r requirements.txt
