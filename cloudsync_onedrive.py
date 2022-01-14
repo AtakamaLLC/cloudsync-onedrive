@@ -528,7 +528,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if code in ("UnknownError", "generalException"):
             raise CloudTemporaryError(msg)
 
-        log.error("Not converting err %s %s", ex, req)
+        log.error("Not converting err %s", req)
         return False
 
     def get_quota(self):
