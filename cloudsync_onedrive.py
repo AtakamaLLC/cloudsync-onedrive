@@ -871,35 +871,34 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return self._info_from_rest(r, root=self.dirname(path))
 
     def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
-        with self._api():
-            size = _get_size_and_seek0(file_like)
-            r = self._direct_api("post", f"{drive_path}/createUploadSession", json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
-            upload_url = r["uploadUrl"]
+        size = _get_size_and_seek0(file_like)
+        r = self._direct_api("post", f"{drive_path}/createUploadSession", json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
+        upload_url = r["uploadUrl"]
+
+        data = file_like.read(self.upload_block_size)
+
+        max_retries_per_block = 10
+
+        cbfrom = 0
+        retries = 0
+        while data:
+            clen = len(data)             # fragment content size
+            cbto = cbfrom + clen - 1     # inclusive content byte range
+            cbrange = f"bytes {cbfrom}-{cbto}/{size}"
+            try:
+                headers = {"Content-Length": clen, "Content-Range": cbrange}
+                r = self._direct_api("put", url=upload_url, data=data, headers=headers)
+            except (CloudDisconnectedError, CloudTemporaryError) as e:
+                retries += 1
+                log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s", cbrange, retries, type(e))
+                if retries >= max_retries_per_block:
+                    raise e
+                continue
 
             data = file_like.read(self.upload_block_size)
-
-            max_retries_per_block = 10
-
-            cbfrom = 0
+            cbfrom = cbto + 1
             retries = 0
-            while data:
-                clen = len(data)             # fragment content size
-                cbto = cbfrom + clen - 1     # inclusive content byte range
-                cbrange = f"bytes {cbfrom}-{cbto}/{size}"
-                try:
-                    headers = {"Content-Length": clen, "Content-Range": cbrange}
-                    r = self._direct_api("put", url=upload_url, data=data, headers=headers)
-                except (CloudDisconnectedError, CloudTemporaryError) as e:
-                    retries += 1
-                    log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s", cbrange, retries, type(e))
-                    if retries >= max_retries_per_block:
-                        raise e
-                    continue
-
-                data = file_like.read(self.upload_block_size)
-                cbfrom = cbto + 1
-                retries = 0
-            return r
+        return r
 
     def download(self, oid, file_like):
         api_path = self._api_path(oid=oid) + "/content"

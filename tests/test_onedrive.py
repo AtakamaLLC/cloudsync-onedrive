@@ -15,6 +15,8 @@ from cloudsync.exceptions import (
     CloudTokenError,
     CloudFileNotFoundError,
     CloudCursorError,
+    CloudFileExistsError,
+    CloudDisconnectedError
 )
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
@@ -638,6 +640,23 @@ def test_connect_resiliency():
 def test_connect_raises_token_errors():
     api, odp = fake_odp()
     odp.disconnect()
+
+    # bad creds
+    with pytest.raises(CloudTokenError):
+        # creds dict required
+        odp.connect_impl(None)
+    with pytest.raises(CloudTokenError):
+        # creds dict must have "refresh" or "refresh_token"
+        odp.connect_impl({"stale_token": "xyz"})
+
+    # auth exceptions
+    with patch.object(odp, "_get_auth_tokens", side_effect=requests.exceptions.ConnectionError):
+        with pytest.raises(CloudDisconnectedError):
+            odp.connect_impl({"refresh_token": "abc"})
+    with patch.object(odp, "_get_auth_tokens", side_effect=Exception):
+        with pytest.raises(CloudTokenError):
+            odp.connect_impl({"refresh_token": "abc"})
+
     odp._creds = {"access_token": "t", "refresh": "r"}
     direct_api_og = odp._direct_api
 
@@ -660,6 +679,29 @@ def test_connect_raises_token_errors():
     with patch.object(odp, "_fetch_drive_list"):
         with pytest.raises(CloudTokenError):
             odp.reconnect()
+
+
+def test_error_conversion():
+    _, odp = fake_odp()
+
+    def make_error(status, message="", code=""):
+        data = {
+            "error": {
+                "message": message,
+                "code": code
+            }
+        }
+        error = MagicMock()
+        error.status_code = status
+        error.json = lambda: data
+        return error
+
+    assert not odp._raise_converted_error(make_error(299))
+    assert not odp._raise_converted_error(make_error(599))
+
+    with patch.object(odp, "_check_ns", side_effect=lambda _1, _2: True):
+        with pytest.raises(CloudFileExistsError):
+            odp._raise_converted_error(make_error(400, code=ErrorCode.NotSupported))
 
 
 def test_connect_exception_handling():
