@@ -34,7 +34,7 @@ from cloudsync.utils import debug_sig, memoize
 import quickxorhash
 
 if TYPE_CHECKING:
-    from cloudsync import OInfo
+    from cloudsync import OInfo  # pragma: no cover
 
 __version__ = "3.1.11"  # pragma: no cover
 
@@ -113,45 +113,6 @@ def _get_size_and_seek0(file_like):
     size = file_like.tell()
     file_like.seek(0)
     return size
-
-
-class OneDriveItem:
-    """Use to covert oid to path or path to oid.   Don't try to keep it around, or reuse it."""
-    def __init__(self, prov, *, oid=None, path=None):
-        self.__prov = prov
-
-        if oid is None and path is None:
-            raise ValueError("Must specify oid or path")
-
-        if path == "/":
-            oid = "root"
-
-        if oid == "root":
-            oid = prov.namespace.api_root_oid
-            path = "/"
-
-        self.__oid = oid
-        self.__path = path
-        self._drive_id: str = self.__prov._validated_namespace_id
-
-    @property
-    def oid(self):
-        return self.__oid
-
-    @property
-    def path(self):
-        if not self.__path:
-            self.__path = self.__prov.info_oid(self.__oid).path
-        return self.__path
-
-    @property
-    def api_path(self):
-        if self.__oid:
-            return f"/drives/{self._drive_id}/items/{self.__oid}"
-        if self.__path:
-            enc_path = urllib.parse.quote(self.__path)
-            return f"/drives/{self._drive_id}/{self.__prov.namespace.api_root_path}:{enc_path}:"
-        raise AssertionError("This should not happen, since __init__ verifies that there is one or the other")
 
 
 @dataclass
@@ -253,6 +214,18 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     @property
     def connected(self):
         return self.__client is not None
+
+    def _api_path(self, *, oid: Optional[str]=None, path: Optional[str]=None) -> str:
+        assert oid or path
+
+        if oid == "root" or path == "/":
+            oid = self.namespace.api_root_oid
+
+        if oid:
+            return f"/drives/{self._validated_namespace_id}/items/{oid}"
+
+        enc_path = urllib.parse.quote(path)
+        return f"/drives/{self._validated_namespace_id}/{self.namespace.api_root_path}:{enc_path}:"
 
     # names of args are compat with requests module
     def _direct_api(self, action, path=None, *, url=None, stream=None, data=None, headers=None,
@@ -839,28 +812,27 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def upload(self, oid, file_like, metadata=None) -> 'OInfo':
         size = _get_size_and_seek0(file_like)
+        api_path = self._api_path(oid=oid)
+
         if size == 0:
-            with self._api() as client:
-                api_path = self._get_item(client, oid=oid).api_path
-                try:
-                    resp = self._direct_api("put", f"{api_path}/content", data=file_like)
-                except CloudTemporaryError:
-                    # onedrive occasionally reports etag mismatch errors, even when there's no possibility of conflict
-                    # simply retrying here vastly reduces the number of false positive failures
-                    resp = self._direct_api("put", f"{api_path}/content", data=file_like)
+            try:
+                resp = self._direct_api("put", f"{api_path}/content", data=file_like)
+            except CloudTemporaryError:
+                # onedrive occasionally reports etag mismatch errors, even when there's no possibility of conflict
+                # simply retrying here vastly reduces the number of false positive failures
+                resp = self._direct_api("put", f"{api_path}/content", data=file_like)
 
-                log.debug("uploaded: %s", resp.get("content"))
-                return self._info_from_rest(resp)
+            log.debug("uploaded: %s", resp.get("content"))
+            return self._info_from_rest(resp)
         else:
-            with self._api() as client:
-                info = self.info_oid(oid)
-                if not info:
-                    raise CloudFileNotFoundError("Uploading to nonexistent oid")
+            info = self.info_oid(oid)
+            if not info:
+                raise CloudFileNotFoundError("Uploading to nonexistent oid")
 
-                if info.otype == DIRECTORY:
-                    raise CloudFileExistsError("Trying to upload on top of directory")
+            if info.otype == DIRECTORY:
+                raise CloudFileExistsError("Trying to upload on top of directory")
 
-                _unused_resp = self._upload_large(self._get_item(client, oid=oid).api_path, file_like, "replace")
+            _unused_resp = self._upload_large(api_path, file_like, "replace")
             # todo: maybe use the returned item dict to speed this up
             return self.info_oid(oid)
 
@@ -875,27 +847,27 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if size == 0:
             if self.exists_path(path):
                 raise CloudFileExistsError()
-            with self._api() as client:
-                api_path = self._get_item(client, oid=pid).api_path
-                base = base.replace("'", "''")
-                name = urllib.parse.quote(base)
-                api_path += "/children('" + name + "')/content"
-                try:
-                    headers = {'content-type': 'text/plain'}
-                    r = self._direct_api("put", api_path, data=file_like, headers=headers)  # default timeout ok, size == 0 from "if" condition
-                except CloudTemporaryError:
-                    info = self.info_path(path)
-                    # onedrive can fail with ConnectionResetByPeer, but still secretly succeed... just without returning info
-                    # if so, check hashes, and if all is OK, return OK
-                    if info and info.hash == self.hash_data(file_like):
-                        return info
-                    # alternately this could be a race condition, where two people upload at once
-                    # so fail otherwise
-                    raise
-            return self._info_from_rest(r, root=dirname)
+
+            base = base.replace("'", "''")
+            name = urllib.parse.quote(base)
+            api_path = self._api_path(oid=pid) + "/children('" + name + "')/content"
+            try:
+                headers = {'content-type': 'text/plain'}
+                r = self._direct_api("put", api_path, data=file_like, headers=headers)  # default timeout ok, size == 0 from "if" condition
+                return self._info_from_rest(r, root=dirname)
+            except CloudTemporaryError:
+                info = self.info_path(path)
+                # onedrive can fail with ConnectionResetByPeer, but still secretly succeed... just without returning info
+                # if so, check hashes, and if all is OK, return OK
+                if info and info.hash == self.hash_data(file_like):
+                    return info
+                # alternately this could be a race condition, where two people upload at once
+                # so fail otherwise
+                raise
+
         else:
-            with self._api() as client:
-                r = self._upload_large(self._get_item(client, path=path).api_path, file_like, conflict="fail")
+            api_path = self._api_path(path=path)
+            r = self._upload_large(api_path, file_like, conflict="fail")
             return self._info_from_rest(r, root=self.dirname(path))
 
     def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
@@ -930,68 +902,65 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return r
 
     def download(self, oid, file_like):
-        with self._api() as client:
-            info = self._get_item(client, oid=oid)
-            r = self._direct_api("get", info.api_path + "/content", stream=True)
-            for chunk in r.iter_content(chunk_size=4096):
-                file_like.write(chunk)
-                file_like.flush()
+        api_path = self._api_path(oid=oid) + "/content"
+        r = self._direct_api("get", api_path, stream=True)
+        for chunk in r.iter_content(chunk_size=4096):
+            file_like.write(chunk)
+            file_like.flush()
 
     def rename(self, oid, path):  # pylint: disable=too-many-locals, too-many-branches, too-many-statements
-        with self._api() as client:
-            self._verify_parent_folder_exists(path)
-            parent, base = self.split(path)
+        self._verify_parent_folder_exists(path)
+        parent, base = self.split(path)
 
-            info = self.info_oid(oid)
-            if not info:
-                raise CloudFileNotFoundError(f"oid not found:{oid}")
+        info = self.info_oid(oid)
+        if not info:
+            raise CloudFileNotFoundError(f"oid not found:{oid}")
 
-            old_path = info.path
-            old_parent_id = info.pid
-            item = self._get_item(client, oid=oid)
+        api_path = self._api_path(oid=oid)
+        old_path = info.path
+        old_parent_id = info.pid
+        new_parent_info = self.info_path(parent)
+        new_parent_id = self.globalize_oid(new_parent_info.oid)
 
-            new_parent_info = self.info_path(parent)
-            new_parent_id = self.globalize_oid(new_parent_info.oid)
+        # support copy over an empty folder
+        if info.otype == DIRECTORY:
+            try:
+                target_info = self.info_path(path)
+            except CloudFileNotFoundError:
+                target_info = None
+            if target_info and target_info.otype == DIRECTORY and target_info.oid != oid:
+                is_empty = True
+                for _ in self.listdir(target_info.oid):
+                    is_empty = False
+                    break
+                if is_empty:
+                    self.delete(target_info.oid)
 
-            # support copy over an empty folder
-            if info.otype == DIRECTORY:
-                try:
-                    target_info = self.info_path(path)
-                except CloudFileNotFoundError:
-                    target_info = None
-                if target_info and target_info.otype == DIRECTORY and target_info.oid != oid:
-                    is_empty = True
-                    for _ in self.listdir(target_info.oid):
-                        is_empty = False
-                        break
-                    if is_empty:
-                        self.delete(target_info.oid)
-
-            rename_json = {}
-            if info.name != base:
-                rename_json["name"] = base
-                need_temp = info.path.lower() == path.lower()
-                if need_temp:
-                    temp_json = {"name": base + os.urandom(8).hex()}
-                    self._direct_api("patch", item.api_path, json=temp_json)
-            if old_parent_id != new_parent_id:
-                rename_json["parentReference"] = {"id": new_parent_id}
-            if not rename_json:
-                return oid
-            ret = self._direct_api("patch", item.api_path, json=rename_json)
-            if ret.get("status_code", 0) == 202:
-                # wait for move/copy to complete to get the new oid
-                new_oid = None
-                for i in range(5):
-                    time.sleep(i)
-                    info = self.info_path(path)
-                    if info:
-                        new_oid = info.oid
-                        break
-                if not new_oid:
-                    log.error("oid lookup failed after move/copy")
-                    raise CloudFileNotFoundError("oid lookup failed after move/copy")
-                oid = new_oid
+        rename_json = {}
+        if info.name != base:
+            rename_json["name"] = base
+            need_temp = info.path.lower() == path.lower()
+            if need_temp:
+                temp_json = {"name": base + os.urandom(8).hex()}
+                self._direct_api("patch", api_path, json=temp_json)
+        if old_parent_id != new_parent_id:
+            rename_json["parentReference"] = {"id": new_parent_id}
+        if not rename_json:
+            return oid
+        ret = self._direct_api("patch", api_path, json=rename_json)
+        if ret.get("status_code", 0) == 202:
+            # wait for move/copy to complete to get the new oid
+            new_oid = None
+            for i in range(5):
+                time.sleep(i)
+                info = self.info_path(path)
+                if info:
+                    new_oid = info.oid
+                    break
+            if not new_oid:
+                log.error("oid lookup failed after move/copy")
+                raise CloudFileNotFoundError("oid lookup failed after move/copy")
+            oid = new_oid
 
         new_path = self.info_oid(oid).path
         if self.paths_match(old_path, new_path, for_display=True): # pragma: no cover
@@ -1056,10 +1025,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                             size=size, mtime=mtime, shared=shared)
 
     def listdir(self, oid) -> Generator[OneDriveInfo, None, None]:
-        with self._api() as client:
-            api_path = self._get_item(client, oid=oid).api_path
-
-        res = self._direct_api("get", f"{api_path}/children")
+        api_path = self._api_path(oid=oid) + "/children"
+        res = self._direct_api("get", api_path)
         items = res.get("value", [])
         next_link = res.get("@odata.nextLink")
 
@@ -1089,8 +1056,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         log.debug("got pid %s", pid)
 
         _, new_folder = self.split(path)
-        with self._api() as client:
-            api_path = self._get_item(client, oid=pid).api_path
+        api_path = self._api_path(oid=pid)
 
         log.debug("mkdir parent_path=%s", api_path)
         data = {
@@ -1106,19 +1072,19 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def delete(self, oid):
         try:
-            with self._api() as client:
-                info = self.info_oid(oid)
-                if not info:
-                    # I don't think this will ever happen...
-                    log.info("deleted non-existing oid %s", debug_sig(oid))  # pragma: no cover
-                    return  # file doesn't exist already...
-                if info.otype == DIRECTORY:
-                    try:
-                        next(self.listdir(oid))
-                        raise CloudFileExistsError(f"Cannot delete non-empty folder {oid}:{info.name}")
-                    except StopIteration:
-                        pass  # Folder is empty, delete it no problem
-                self._direct_api("delete", self._get_item(client, oid=oid).api_path)
+            info = self.info_oid(oid)
+            if not info:
+                # I don't think this will ever happen...
+                log.info("deleted non-existing oid %s", debug_sig(oid))  # pragma: no cover
+                return  # file doesn't exist already...
+            if info.otype == DIRECTORY:
+                try:
+                    next(self.listdir(oid))
+                    raise CloudFileExistsError(f"Cannot delete non-empty folder {oid}:{info.name}")
+                except StopIteration:
+                    pass  # Folder is empty, delete it no problem
+            api_path = self._api_path(oid=oid)
+            self._direct_api("delete", api_path)
         except CloudFileNotFoundError:
             pass
 
@@ -1135,9 +1101,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 return OneDriveInfo(oid="root", otype=DIRECTORY, hash=None, path="/", path_orig="/", pid=None, name="",
                                     mtime=None, shared=False)
 
-            with self._api() as client:
-                api_path = self._get_item(client, path=path).api_path
-            log.debug("direct res path %s", api_path)
+            api_path = self._api_path(path=path)
             res = self._direct_api("get", api_path)
             return self._info_from_rest(res, root=self.dirname(path))
         except CloudFileNotFoundError:
@@ -1196,17 +1160,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         path = self._make_path_relative_to_shared_folder_if_needed(path, force=True)
         return path
 
-    def _get_item(self, client, *, oid=None, path=None):
-        if not client:
-            raise CloudDisconnectedError("Not connected")
-        return OneDriveItem(self, oid=oid, path=path)
-
     def info_oid(self, oid: str, use_cache=True) -> Optional[OneDriveInfo]:
         try:
-            with self._api() as client:
-                item = self._get_item(client, oid=oid)
-
-            res = self._direct_api("get", item.api_path)
+            api_path = self._api_path(oid=oid)
+            res = self._direct_api("get", api_path)
             return self._info_from_rest(res)
         except CloudFileNotFoundError:
             return None
