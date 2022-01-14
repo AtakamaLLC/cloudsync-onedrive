@@ -16,7 +16,8 @@ from cloudsync.exceptions import (
     CloudFileNotFoundError,
     CloudCursorError,
     CloudFileExistsError,
-    CloudDisconnectedError
+    CloudDisconnectedError,
+    CloudTemporaryError,
 )
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
@@ -367,6 +368,36 @@ def test_upload():
     odp.create("/big", io.BytesIO(b'12345678901234567890'))
     assert srv.calls["upload.session"]
     assert srv.calls["upload"]
+
+    # direct api temp errors
+    direct_api_orig = odp._direct_api
+    call_count = 0
+
+    def direct_api_patched(*a, **kw):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise CloudTemporaryError
+        return direct_api_orig(*a, **kw)
+
+    with patch.object(odp, "_direct_api", direct_api_patched):
+        # retry upload on CloudTempError
+        odp.upload("oid", io.BytesIO())
+        assert call_count == 2
+
+        # create checks and returns info on CloudTempError
+        call_count = 0
+        mock_info = MagicMock()
+        mock_info.hash = odp.hash_data(io.BytesIO())
+        with patch.object(odp, "exists_path", side_effect=lambda p: False):
+            with patch.object(odp, "info_path", side_effect=lambda p: mock_info):
+                info = odp.create("/small-2", io.BytesIO())
+                assert info == mock_info
+                # but re-raises if there is a hash mismatch
+                call_count = 0
+                mock_info.hash = None
+                with pytest.raises(CloudTemporaryError):
+                    odp.create("/small-2", io.BytesIO())
 
 
 def test_mkdir():
