@@ -1,0 +1,41 @@
+name: main
+
+on:
+  push:
+    branches: [ 'master' ]
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: [3.9]
+    name: Python ${{ matrix.python }}
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      name: Setup Python ${{ matrix.python }}
+      with:
+        python-version: ${{ matrix.python }}
+    - name: Deps
+      run: |
+        python -m pip install --upgrade pip
+        make requirements
+    - name: Lint
+      run: |
+        make lint
+    - name: Test
+      env:
+        ONEDRIVE_APP_ID: ${{ secrets.ONEDRIVE_APP_ID }}
+        ONEDRIVE_APP_SECRET: ${{ secrets.ONEDRIVE_APP_SECRET }}
+        ONEDRIVE_TOKEN: ${{ secrets.ONEDRIVE_TOKEN }}
+        ONEDRIVE_SHARED_NS_ID: ${{ secrets.ONEDRIVE_SHARED_NS_ID }}
+        TESTODBIZ_APP_ID: ${{ secrets.TESTODBIZ_APP_ID }}
+        TESTODBIZ_APP_SECRET: ${{ secrets.TESTODBIZ_APP_SECRET }}
+        TESTODBIZ_TOKEN: ${{ secrets.TESTODBIZ_TOKEN }}
+        TESTODBIZ_SHARED_NS_ID: ${{ secrets.TESTODBIZ_SHARED_NS_ID }}
+      run: |
+        make test
+        codecov --env RUNNER_OS
