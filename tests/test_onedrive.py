@@ -10,7 +10,6 @@ from unittest.mock import patch, call, MagicMock
 import pytest
 import requests
 
-from onedrivesdk_fork.error import ErrorCode
 from cloudsync.exceptions import (
     CloudNamespaceError,
     CloudTokenError,
@@ -21,7 +20,7 @@ from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
 from cloudsync.sync.state import FILE, DIRECTORY
-from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site
+from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site, ErrorCode
 
 log = logging.getLogger(__name__)
 
