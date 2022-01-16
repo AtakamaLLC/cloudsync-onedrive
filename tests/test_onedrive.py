@@ -835,3 +835,42 @@ def test_convert_to_event():
     event_dict["parentReference"]["path"] = "/parent/path"
     event = odp._convert_to_event(event_dict, "new-cursor")
     assert event.exists
+
+
+def test_rename_202():
+    _, odp = fake_odp()
+
+    request_orig = odp._http.request
+
+    def rename_return_202(*args, **kwargs):
+        if args[0].lower() == "patch":
+            resp = requests.Response()
+            resp.status_code = 202
+            resp.json = {"status_code": 202}
+            return resp
+        else:
+            return request_orig(*args, **kwargs)
+
+    # rename returns 202, all 5 tries fail to fetch the new path
+    with patch.object(odp, "globalize_oid", side_effect=lambda oid: "new_parent"):
+        with patch.object(odp._http, "request", rename_return_202):
+            with pytest.raises(CloudFileNotFoundError):
+                odp.rename("ITEM_ID_30", "/new_path")
+
+    info_path_orig = odp.info_path
+
+    def info_path_patched(path):
+        if path == "/new_path":
+            ret = MagicMock()
+            ret.oid = "ITEM_ID_30"
+            return ret
+        else:
+            return info_path_orig(path)
+
+    # rename returns 202, new path fetch is successful
+    with patch.object(odp, "globalize_oid", side_effect=lambda oid: "new_parent"):
+        with patch.object(odp._http, "request", rename_return_202):
+            with patch.object(odp, "info_path", info_path_patched):
+                with pytest.raises(CloudTemporaryError):
+                    # temp error: path of oid did not change
+                    odp.rename("ITEM_ID_30", "/new_path")
