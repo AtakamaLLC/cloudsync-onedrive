@@ -846,7 +846,7 @@ def test_rename_202():
         if args[0].lower() == "patch":
             resp = requests.Response()
             resp.status_code = 202
-            resp.json = {"status_code": 202}
+            resp.json = {"status_code": 202}  # type: ignore
             return resp
         else:
             return request_orig(*args, **kwargs)
