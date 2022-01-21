@@ -197,7 +197,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         super().__init__()
         self._creds: Optional[Dict[str, str]] = None
         self.__cursor: Optional[str] = None
-        self.__client: object = None
+        self.__connected: bool = False
         self._mutex = threading.RLock()
         self._oauth_config = oauth_config
         self._auth_tokens: Optional[Dict[str, str]] = None
@@ -213,7 +213,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     @property
     def connected(self):
-        return self.__client is not None
+        return self.__connected
 
     def _api_path(self, *, oid: Optional[str]=None, path: Optional[str]=None) -> str:
         assert oid or path
@@ -520,10 +520,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         self.connect(self._creds)
 
     def connect_impl(self, creds):
-        if not self.__client or creds != self._creds:
+        if not self.connected or creds != self._creds:
             log.info('Connecting to One Drive')
 
-            with self._api(needs_client=False):
+            with self._mutex:
                 try:
                     self._get_auth_tokens(creds)
                 except requests.exceptions.ConnectionError:
@@ -532,7 +532,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     log.exception("exception while authenticating: %s", e)
                     raise CloudTokenError(str(e))
 
-                self.__client = object()
+                self.__connected = True
 
                 try:
                     self._fetch_drive_list(clear_cache=True)
@@ -580,14 +580,13 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             log.info("creds have changed")
             self._oauth_config.creds_changed(self._creds)
 
-    def _api(self, *args, needs_client=True, **kwargs):  # pylint: disable=arguments-differ
-        if needs_client and not self.__client:
+    def _api(self, *args, **kwargs):
+        if not self.connected:
             raise CloudDisconnectedError("currently disconnected")
         return self
 
     def __enter__(self):
         self._mutex.__enter__()
-        return self.__client
 
     def __exit__(self, ty, ex, tb):
         self._mutex.__exit__(ty, ex, tb)
@@ -608,7 +607,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def disconnect(self):
         with self._mutex:
-            self.__client = None
+            self.__connected = False
 
     @property
     def latest_cursor(self):
@@ -909,7 +908,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             file_like.flush()
 
     def rename(self, oid, path):  # pylint: disable=too-many-locals, too-many-branches, too-many-statements
-        with self.api():
+        with self._api():
             self._verify_parent_folder_exists(path)
             parent, base = self.split(path)
 
