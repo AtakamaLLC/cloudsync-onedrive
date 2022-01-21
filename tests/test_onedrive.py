@@ -296,6 +296,19 @@ class FakeGraphApi(FakeApi):
                     }
                 }
 
+            if uri.find("item-oid") > 0:
+                return {
+                    "id": "item-oid",
+                    "name": "from_personal",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
+                    "lastModifiedDateTime": "2019-12-04T15:24:19.717Z",
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_20",
+                        "driveType": "business",
+                        "id": "ITEM_ID_40"
+                    },
+                }
+
             err = ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": "whatever"}})
             log.debug("raising %s", err)
             raise err
@@ -374,15 +387,16 @@ def test_upload():
     call_count = 0
 
     def direct_api_patched(*a, **kw):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-            raise CloudTemporaryError
+        if a[0] == "put":
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise CloudTemporaryError
         return direct_api_orig(*a, **kw)
 
     with patch.object(odp, "_direct_api", direct_api_patched):
         # retry upload on CloudTempError
-        odp.upload("oid", io.BytesIO())
+        odp.upload("item-oid", io.BytesIO())
         assert call_count == 2
 
         # create checks and returns info on CloudTempError
