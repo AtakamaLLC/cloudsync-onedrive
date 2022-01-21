@@ -315,3 +315,20 @@ def test_shared_folder_owner_created_subfolder(shared_folder_prov):
     prov.delete(f1_oid)
     oids = [item.oid for item in prov.listdir_path("/owner-created")]
     assert f1_oid not in oids
+
+
+def test_upload_errors(provider):
+    # Note: zero-byte uploads have their own codepath, hence the duplication
+
+    # upload to bad oid
+    with pytest.raises(CloudFileNotFoundError):
+        provider.upload("non-existant-oid", BytesIO(b""))
+    with pytest.raises(CloudFileNotFoundError):
+        provider.upload("non-existant-oid", BytesIO(b"data"))
+
+    # upload to a folder
+    folder_oid = provider.mkdir(provider.temp_name())
+    with pytest.raises(CloudFileExistsError):
+        provider.upload(folder_oid, BytesIO(b""))
+    with pytest.raises(CloudFileExistsError):
+        provider.upload(folder_oid, BytesIO(b"data"))

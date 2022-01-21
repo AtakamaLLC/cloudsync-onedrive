@@ -483,8 +483,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             raise CloudFileExistsError(msg)
         if code == ErrorCode.AccessDenied:
             raise CloudFileExistsError(msg)
-        if code == ErrorCode.NotSupported:
-            raise CloudFileExistsError(msg)
         if status == 401:
             self.disconnect()
             raise CloudTokenError(msg)
@@ -810,20 +808,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         return ohash
 
     def upload(self, oid, file_like, metadata=None) -> 'OInfo':
-        size = _get_size_and_seek0(file_like)
-        api_path = self._api_path(oid=oid)
+        with self._api():
+            size = _get_size_and_seek0(file_like)
+            api_path = self._api_path(oid=oid)
 
-        if size == 0:
-            try:
-                resp = self._direct_api("put", f"{api_path}/content", data=file_like)
-            except CloudTemporaryError:
-                # onedrive occasionally reports etag mismatch errors, even when there's no possibility of conflict
-                # simply retrying here vastly reduces the number of false positive failures
-                resp = self._direct_api("put", f"{api_path}/content", data=file_like)
-
-            log.debug("uploaded: %s", resp.get("content"))
-            return self._info_from_rest(resp)
-        else:
             info = self.info_oid(oid)
             if not info:
                 raise CloudFileNotFoundError("Uploading to nonexistent oid")
@@ -831,9 +819,20 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             if info.otype == DIRECTORY:
                 raise CloudFileExistsError("Trying to upload on top of directory")
 
-            _unused_resp = self._upload_large(api_path, file_like, "replace")
-            # todo: maybe use the returned item dict to speed this up
-            return self.info_oid(oid)
+            if size == 0:
+                try:
+                    resp = self._direct_api("put", f"{api_path}/content", data=file_like)
+                except CloudTemporaryError:
+                    # onedrive occasionally reports etag mismatch errors, even when there's no possibility of conflict
+                    # simply retrying here vastly reduces the number of false positive failures
+                    resp = self._direct_api("put", f"{api_path}/content", data=file_like)
+
+                log.debug("uploaded: %s", resp.get("content"))
+                return self._info_from_rest(resp)
+            else:
+                _unused_resp = self._upload_large(api_path, file_like, "replace")
+                # todo: maybe use the returned item dict to speed this up
+                return self.info_oid(oid)
 
     def create(self, path, file_like, metadata=None) -> 'OInfo':
         if not metadata:
