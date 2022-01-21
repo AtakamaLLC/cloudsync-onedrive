@@ -872,33 +872,34 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
         size = _get_size_and_seek0(file_like)
-        r = self._direct_api("post", f"{drive_path}/createUploadSession", json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
-        upload_url = r["uploadUrl"]
-
-        data = file_like.read(self.upload_block_size)
-
-        max_retries_per_block = 10
-
-        cbfrom = 0
-        retries = 0
-        while data:
-            clen = len(data)             # fragment content size
-            cbto = cbfrom + clen - 1     # inclusive content byte range
-            cbrange = f"bytes {cbfrom}-{cbto}/{size}"
-            try:
-                headers = {"Content-Length": clen, "Content-Range": cbrange}
-                r = self._direct_api("put", url=upload_url, data=data, headers=headers)
-            except (CloudDisconnectedError, CloudTemporaryError) as e:
-                retries += 1
-                log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s", cbrange, retries, type(e))
-                if retries >= max_retries_per_block:
-                    raise e
-                continue
+        with self._api():
+            r = self._direct_api("post", f"{drive_path}/createUploadSession", json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
+            upload_url = r["uploadUrl"]
 
             data = file_like.read(self.upload_block_size)
-            cbfrom = cbto + 1
+
+            max_retries_per_block = 10
+
+            cbfrom = 0
             retries = 0
-        return r
+            while data:
+                clen = len(data)             # fragment content size
+                cbto = cbfrom + clen - 1     # inclusive content byte range
+                cbrange = f"bytes {cbfrom}-{cbto}/{size}"
+                try:
+                    headers = {"Content-Length": clen, "Content-Range": cbrange}
+                    r = self._direct_api("put", url=upload_url, data=data, headers=headers)
+                except (CloudDisconnectedError, CloudTemporaryError) as e:
+                    retries += 1
+                    log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s", cbrange, retries, type(e))
+                    if retries >= max_retries_per_block:
+                        raise e
+                    continue
+
+                data = file_like.read(self.upload_block_size)
+                cbfrom = cbto + 1
+                retries = 0
+            return r
 
     def download(self, oid, file_like):
         api_path = self._api_path(oid=oid) + "/content"
@@ -908,65 +909,66 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             file_like.flush()
 
     def rename(self, oid, path):  # pylint: disable=too-many-locals, too-many-branches, too-many-statements
-        self._verify_parent_folder_exists(path)
-        parent, base = self.split(path)
+        with self.api():
+            self._verify_parent_folder_exists(path)
+            parent, base = self.split(path)
 
-        info = self.info_oid(oid)
-        if not info:
-            raise CloudFileNotFoundError(f"oid not found:{oid}")
+            info = self.info_oid(oid)
+            if not info:
+                raise CloudFileNotFoundError(f"oid not found:{oid}")
 
-        api_path = self._api_path(oid=oid)
-        old_path = info.path
-        old_parent_id = info.pid
-        new_parent_info = self.info_path(parent)
-        new_parent_id = self.globalize_oid(new_parent_info.oid)
+            api_path = self._api_path(oid=oid)
+            old_path = info.path
+            old_parent_id = info.pid
+            new_parent_info = self.info_path(parent)
+            new_parent_id = self.globalize_oid(new_parent_info.oid)
 
-        # support copy over an empty folder
-        if info.otype == DIRECTORY:
-            try:
-                target_info = self.info_path(path)
-            except CloudFileNotFoundError:
-                target_info = None
-            if target_info and target_info.otype == DIRECTORY and target_info.oid != oid:
-                is_empty = True
-                for _ in self.listdir(target_info.oid):
-                    is_empty = False
-                    break
-                if is_empty:
-                    self.delete(target_info.oid)
+            # support copy over an empty folder
+            if info.otype == DIRECTORY:
+                try:
+                    target_info = self.info_path(path)
+                except CloudFileNotFoundError:
+                    target_info = None
+                if target_info and target_info.otype == DIRECTORY and target_info.oid != oid:
+                    is_empty = True
+                    for _ in self.listdir(target_info.oid):
+                        is_empty = False
+                        break
+                    if is_empty:
+                        self.delete(target_info.oid)
 
-        rename_json = {}
-        if info.name != base:
-            rename_json["name"] = base
-            need_temp = info.path.lower() == path.lower()
-            if need_temp:
-                temp_json = {"name": base + os.urandom(8).hex()}
-                self._direct_api("patch", api_path, json=temp_json)
-        if old_parent_id != new_parent_id:
-            rename_json["parentReference"] = {"id": new_parent_id}
-        if not rename_json:
+            rename_json = {}
+            if info.name != base:
+                rename_json["name"] = base
+                need_temp = info.path.lower() == path.lower()
+                if need_temp:
+                    temp_json = {"name": base + os.urandom(8).hex()}
+                    self._direct_api("patch", api_path, json=temp_json)
+            if old_parent_id != new_parent_id:
+                rename_json["parentReference"] = {"id": new_parent_id}
+            if not rename_json:
+                return oid
+            ret = self._direct_api("patch", api_path, json=rename_json)
+            if ret.get("status_code", 0) == 202:
+                # wait for move/copy to complete to get the new oid
+                new_oid = None
+                for i in range(5):
+                    time.sleep(i)
+                    info = self.info_path(path)
+                    if info:
+                        new_oid = info.oid
+                        break
+                if not new_oid:
+                    log.error("oid lookup failed after move/copy")
+                    raise CloudFileNotFoundError("oid lookup failed after move/copy")
+                oid = new_oid
+
+            new_path = self.info_oid(oid).path
+            if self.paths_match(old_path, new_path, for_display=True): # pragma: no cover
+                log.error("rename did not change cloud file path: old=%s new=%s", old_path, new_path)
+                raise CloudTemporaryError("rename did not change cloud file path")
+
             return oid
-        ret = self._direct_api("patch", api_path, json=rename_json)
-        if ret.get("status_code", 0) == 202:
-            # wait for move/copy to complete to get the new oid
-            new_oid = None
-            for i in range(5):
-                time.sleep(i)
-                info = self.info_path(path)
-                if info:
-                    new_oid = info.oid
-                    break
-            if not new_oid:
-                log.error("oid lookup failed after move/copy")
-                raise CloudFileNotFoundError("oid lookup failed after move/copy")
-            oid = new_oid
-
-        new_path = self.info_oid(oid).path
-        if self.paths_match(old_path, new_path, for_display=True): # pragma: no cover
-            log.error("rename did not change cloud file path: old=%s new=%s", old_path, new_path)
-            raise CloudTemporaryError("rename did not change cloud file path")
-
-        return oid
 
     @staticmethod
     def _parse_time(time_str):
@@ -1071,19 +1073,19 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
 
     def delete(self, oid):
         try:
-            info = self.info_oid(oid)
-            if not info:
-                # I don't think this will ever happen...
-                log.info("deleted non-existing oid %s", debug_sig(oid))  # pragma: no cover
-                return  # file doesn't exist already...
-            if info.otype == DIRECTORY:
-                try:
-                    next(self.listdir(oid))
-                    raise CloudFileExistsError(f"Cannot delete non-empty folder {oid}:{info.name}")
-                except StopIteration:
-                    pass  # Folder is empty, delete it no problem
-            api_path = self._api_path(oid=oid)
-            self._direct_api("delete", api_path)
+            with self._api():
+                info = self.info_oid(oid)
+                if not info:
+                    log.info("deleted non-existing oid %s", debug_sig(oid))  # pragma: no cover
+                    return  # file doesn't exist already...
+                if info.otype == DIRECTORY:
+                    try:
+                        next(self.listdir(oid))
+                        raise CloudFileExistsError(f"Cannot delete non-empty folder {oid}:{info.name}")
+                    except StopIteration:
+                        pass  # Folder is empty, delete it no problem
+                api_path = self._api_path(oid=oid)
+                self._direct_api("delete", api_path)
         except CloudFileNotFoundError:
             pass
 
