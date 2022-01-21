@@ -730,10 +730,6 @@ def test_error_conversion():
     assert not odp._raise_converted_error(make_error(299))
     assert not odp._raise_converted_error(make_error(599))
 
-    with patch.object(odp, "_check_ns", side_effect=lambda _1, _2: True):
-        with pytest.raises(CloudFileExistsError):
-            odp._raise_converted_error(make_error(400, code=ErrorCode.NotSupported))
-
 
 def test_connect_exception_handling():
     api, odp = fake_odp()
