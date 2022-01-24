@@ -233,7 +233,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         assert path or url
 
         if not url:
-            url = self._base_url.rstrip("/") + "/" + path.lstrip("/")
+            url = urllib.parse.urljoin(self._base_url, path.lstrip("/"))
 
         with self._api():
             access_token = self._auth_tokens["access_token"]
