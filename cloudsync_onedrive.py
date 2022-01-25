@@ -483,6 +483,8 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             raise CloudFileExistsError(msg)
         if code == ErrorCode.AccessDenied:
             raise CloudFileExistsError(msg)
+        if code == ErrorCode.NotSupported:
+            raise CloudFileExistsError(msg)
         if status == 401:
             self.disconnect()
             raise CloudTokenError(msg)
@@ -812,10 +814,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             size = _get_size_and_seek0(file_like)
             api_path = self._api_path(oid=oid)
 
+            # pre-checks needed to ensure OneDrive personal and business raise the same error for these conditions
             info = self.info_oid(oid)
             if not info:
                 raise CloudFileNotFoundError("Uploading to nonexistent oid")
-
             if info.otype == DIRECTORY:
                 raise CloudFileExistsError("Trying to upload on top of directory")
 
