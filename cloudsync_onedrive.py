@@ -827,13 +827,13 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             else:
                 try:
                     _unused_resp = self._upload_large(api_path, file_like, "replace")
-                except CloudFileNotFoundError as e:
+                except CloudFileNotFoundError:
                     # needed to ensure both OneDrive variants conform to provider spec:
                     # OneDrive personal raises a FNF error when a FEX is expected
                     info = self.info_oid(oid)
                     if info and info.otype == DIRECTORY:
-                        e = CloudFileExistsError("Trying to upload on top of directory")
-                    raise e
+                        raise CloudFileExistsError("Trying to upload on top of directory")
+                    raise
 
                 # todo: maybe use the returned item dict to speed this up
                 return self.info_oid(oid)
