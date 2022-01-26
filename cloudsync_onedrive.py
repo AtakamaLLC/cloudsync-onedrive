@@ -814,13 +814,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             size = _get_size_and_seek0(file_like)
             api_path = self._api_path(oid=oid)
 
-            # pre-checks needed to ensure OneDrive personal and business raise the same error for these conditions
-            info = self.info_oid(oid)
-            if not info:
-                raise CloudFileNotFoundError("Uploading to nonexistent oid")
-            if info.otype == DIRECTORY:
-                raise CloudFileExistsError("Trying to upload on top of directory")
-
             if size == 0:
                 try:
                     resp = self._direct_api("put", f"{api_path}/content", data=file_like)
@@ -832,7 +825,16 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 log.debug("uploaded: %s", resp.get("content"))
                 return self._info_from_rest(resp)
             else:
-                _unused_resp = self._upload_large(api_path, file_like, "replace")
+                try:
+                    _unused_resp = self._upload_large(api_path, file_like, "replace")
+                except CloudFileNotFoundError as e:
+                    # needed to ensure both OneDrive variants conform to provider spec:
+                    # OneDrive personal raises a FNF error when a FEX is expected
+                    info = self.info_oid(oid)
+                    if info and info.otype == DIRECTORY:
+                        e = CloudFileExistsError("Trying to upload on top of directory")
+                    raise e
+
                 # todo: maybe use the returned item dict to speed this up
                 return self.info_oid(oid)
 
