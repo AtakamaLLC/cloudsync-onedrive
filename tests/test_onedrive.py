@@ -10,18 +10,20 @@ from unittest.mock import patch, call, MagicMock
 import pytest
 import requests
 
-from onedrivesdk_fork.error import ErrorCode
 from cloudsync.exceptions import (
     CloudNamespaceError,
     CloudTokenError,
     CloudFileNotFoundError,
     CloudCursorError,
+    CloudFileExistsError,
+    CloudDisconnectedError,
+    CloudTemporaryError,
 )
 from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
 from cloudsync.sync.state import FILE, DIRECTORY
-from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site
+from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site, ErrorCode
 
 log = logging.getLogger(__name__)
 
@@ -276,6 +278,7 @@ class FakeGraphApi(FakeApi):
                     "name": "from_personal",
                     "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
                     "folder": {"childCount": 0},
+                    "lastModifiedDateTime": "2019-12-04T15:24:19.717Z",
                     "parentReference": {
                         "driveId": "DRIVE_ID_20",
                         "driveType": "business",
@@ -291,6 +294,19 @@ class FakeGraphApi(FakeApi):
                             }
                         }
                     }
+                }
+
+            if uri.find("item-oid") > 0:
+                return {
+                    "id": "item-oid",
+                    "name": "from_personal",
+                    "webUrl": "https://test_onedrive.sharepoint.com/personal/user2_co_onmicrosoft_com/Documents/from_personal/inner_folder",
+                    "lastModifiedDateTime": "2019-12-04T15:24:19.717Z",
+                    "parentReference": {
+                        "driveId": "DRIVE_ID_20",
+                        "driveType": "business",
+                        "id": "ITEM_ID_40"
+                    },
                 }
 
             err = ApiError(404, json={"error": {"code": ErrorCode.ItemNotFound, "message": "whatever"}})
@@ -328,7 +344,7 @@ class FakeGraphApi(FakeApi):
 
         if meth == "POST" and "/children" in uri:
             self.called("mkdir", (uri,))
-            return {'something': 'here'}
+            return {"id": "oid"}
 
         log.debug("api: %s, %s %s", meth, uri, req)
         return {}
@@ -341,6 +357,7 @@ def fake_odp():
     base_url = srv.uri()
     with patch.object(OneDriveProvider, "_base_url", base_url):
         prov = fake_oauth_provider(srv, OneDriveProvider)
+        prov._base_url = base_url
         assert srv.calls["token"]
         assert srv.calls["_fetch_personal_drives"]
         # onedrive saves refresh token if creds change
@@ -364,6 +381,37 @@ def test_upload():
     odp.create("/big", io.BytesIO(b'12345678901234567890'))
     assert srv.calls["upload.session"]
     assert srv.calls["upload"]
+
+    # direct api temp errors
+    direct_api_orig = odp._direct_api
+    call_count = 0
+
+    def direct_api_patched(*a, **kw):
+        if a[0] == "put":
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise CloudTemporaryError
+        return direct_api_orig(*a, **kw)
+
+    with patch.object(odp, "_direct_api", direct_api_patched):
+        # retry upload on CloudTempError
+        odp.upload("item-oid", io.BytesIO())
+        assert call_count == 2
+
+        # create checks and returns info on CloudTempError
+        call_count = 0
+        mock_info = MagicMock()
+        mock_info.hash = odp.hash_data(io.BytesIO())
+        with patch.object(odp, "exists_path", side_effect=lambda p: False):
+            with patch.object(odp, "info_path", side_effect=lambda p: mock_info):
+                info = odp.create("/small-2", io.BytesIO())
+                assert info == mock_info
+                # but re-raises if there is a hash mismatch
+                call_count = 0
+                mock_info.hash = None
+                with pytest.raises(CloudTemporaryError):
+                    odp.create("/small-2", io.BytesIO())
 
 
 def test_mkdir():
@@ -637,6 +685,23 @@ def test_connect_resiliency():
 def test_connect_raises_token_errors():
     api, odp = fake_odp()
     odp.disconnect()
+
+    # bad creds
+    with pytest.raises(CloudTokenError):
+        # creds dict required
+        odp.connect_impl(None)
+    with pytest.raises(CloudTokenError):
+        # creds dict must have "refresh" or "refresh_token"
+        odp.connect_impl({"stale_token": "xyz"})
+
+    # auth exceptions
+    with patch.object(odp, "_get_auth_tokens", side_effect=requests.exceptions.ConnectionError):
+        with pytest.raises(CloudDisconnectedError):
+            odp.connect_impl({"refresh_token": "abc"})
+    with patch.object(odp, "_get_auth_tokens", side_effect=Exception):
+        with pytest.raises(CloudTokenError):
+            odp.connect_impl({"refresh_token": "abc"})
+
     odp._creds = {"access_token": "t", "refresh": "r"}
     direct_api_og = odp._direct_api
 
@@ -659,6 +724,25 @@ def test_connect_raises_token_errors():
     with patch.object(odp, "_fetch_drive_list"):
         with pytest.raises(CloudTokenError):
             odp.reconnect()
+
+
+def test_error_conversion():
+    _, odp = fake_odp()
+
+    def make_error(status, message="", code=""):
+        data = {
+            "error": {
+                "message": message,
+                "code": code
+            }
+        }
+        error = MagicMock()
+        error.status_code = status
+        error.json = lambda: data
+        return error
+
+    assert not odp._raise_converted_error(make_error(299))
+    assert not odp._raise_converted_error(make_error(599))
 
 
 def test_connect_exception_handling():
@@ -700,7 +784,7 @@ def test_cursor_error():
         resp.status_code = 410
         return resp
 
-    with patch.object(odp._http.session, "request", return_410):
+    with patch.object(odp._http, "request", return_410):
         with pytest.raises(CloudCursorError):
             list(odp.events())
 
@@ -710,7 +794,7 @@ def test_cursor_error():
         resp.json = lambda **kwargs: {"error": {"message": "malformed sync token", "code": ErrorCode.InvalidRequest}}
         return resp
 
-    with patch.object(odp._http.session, "request", return_400), patch.object(odp, "_check_ns", return_value=True):
+    with patch.object(odp._http, "request", return_400), patch.object(odp, "_check_ns", return_value=True):
         with pytest.raises(CloudCursorError):
             list(odp.events())
 
@@ -761,3 +845,42 @@ def test_convert_to_event():
     event_dict["parentReference"]["path"] = "/parent/path"
     event = odp._convert_to_event(event_dict, "new-cursor")
     assert event.exists
+
+
+def test_rename_202():
+    _, odp = fake_odp()
+
+    request_orig = odp._http.request
+
+    def rename_return_202(*args, **kwargs):
+        if args[0].lower() == "patch":
+            resp = requests.Response()
+            resp.status_code = 202
+            resp.json = {"status_code": 202}  # type: ignore
+            return resp
+        else:
+            return request_orig(*args, **kwargs)
+
+    # rename returns 202, all 5 tries fail to fetch the new path
+    with patch.object(odp, "globalize_oid", side_effect=lambda oid: "new_parent"):
+        with patch.object(odp._http, "request", rename_return_202):
+            with pytest.raises(CloudFileNotFoundError):
+                odp.rename("ITEM_ID_30", "/new_path")
+
+    info_path_orig = odp.info_path
+
+    def info_path_patched(path):
+        if path == "/new_path":
+            ret = MagicMock()
+            ret.oid = "ITEM_ID_30"
+            return ret
+        else:
+            return info_path_orig(path)
+
+    # rename returns 202, new path fetch is successful
+    with patch.object(odp, "globalize_oid", side_effect=lambda oid: "new_parent"):
+        with patch.object(odp._http, "request", rename_return_202):
+            with patch.object(odp, "info_path", info_path_patched):
+                with pytest.raises(CloudTemporaryError):
+                    # temp error: path of oid did not change
+                    odp.rename("ITEM_ID_30", "/new_path")

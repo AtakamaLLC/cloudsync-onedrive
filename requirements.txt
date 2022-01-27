@@ -1,16 +1,17 @@
 # dev/deploy
 flit
 pylint
-mypy<0.800
+pylint-requests
+mypy
+types-requests
 pytest
 pytest-coverage
 pytest-timeout
 pytest-xdist
 diff-cover
+codecov
 # from pyproject.toml
 cloudsync>=3.0.0
-onedrivesdk_fork
 quickxorhash
 dataclasses
-codecov
-pylint-requests
+requests
