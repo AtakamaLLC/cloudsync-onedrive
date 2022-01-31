@@ -332,3 +332,40 @@ def test_upload_errors(provider):
         provider.upload(folder_oid, BytesIO(b""))
     with pytest.raises(CloudFileExistsError):
         provider.upload(folder_oid, BytesIO(b"data"))
+
+
+def test_upload_resource_modified(provider):
+    # create a file to upload to
+    info1 = provider.create(provider.temp_name(), BytesIO(b"test1"))
+
+    direct_api_orig = provider._direct_api
+    resource_modified_error_count = 0
+    resource_modified_errors_needed = 0
+
+    def direct_api_patchced(*args, **kwargs):
+        nonlocal resource_modified_error_count
+        nonlocal resource_modified_errors_needed
+        if resource_modified_error_count < resource_modified_errors_needed:
+            if "put" in args[0].lower() and "Content-Range" in kwargs["headers"]:
+                resource_modified_error_count += 1
+                raise cloudsync_onedrive.OneDriveResourceModifiedError()
+        return direct_api_orig(*args, **kwargs)
+
+    # provider._direct_api() raises ResourceModified
+    with patch.object(provider.prov, "_direct_api", direct_api_patchced):
+        # errors needed is 0
+        info2 = provider.upload(info1.oid, BytesIO(b"test2"))
+        assert info2.hash != info1.hash
+        assert resource_modified_error_count == 0
+        # errors needed is 1 - still ok, we retry up to 3 times
+        resource_modified_errors_needed = 1
+        info3 = provider.upload(info1.oid, BytesIO(b"test3"))
+        assert info3.hash != info2.hash
+        assert resource_modified_error_count == 1
+        # errors needed is 4 - ResourceModified is re-raised after the 3rd error
+        resource_modified_errors_needed = 4
+        resource_modified_error_count = 0
+        with pytest.raises(cloudsync_onedrive.OneDriveResourceModifiedError):
+            # use the inner provider because the outer fixture does additional retries
+            provider.prov.upload(info1.oid, BytesIO(b"test4"))
+        assert resource_modified_error_count == 3

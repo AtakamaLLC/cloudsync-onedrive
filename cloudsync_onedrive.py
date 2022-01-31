@@ -6,6 +6,7 @@ Onedrive provider
 
 # https://dev.onedrive.com/
 # https://docs.microsoft.com/en-us/onedrive/developer/rest-api/concepts/upload?view=odsp-graph-online
+# https://docs.microsoft.com/en-us/onedrive/developer/rest-api/concepts/errors?view=odsp-graph-online
 # https://docs.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/msa-oauth?view=odsp-graph-online
 # https://docs.microsoft.com/en-us/onedrive/developer/rest-api/getting-started/app-registration?view=odsp-graph-online
 import os
@@ -61,6 +62,9 @@ class EventFilter(enum.Enum):
 
 
 class ErrorCode:
+    """
+    See: https://docs.microsoft.com/en-us/onedrive/developer/rest-api/concepts/errors?view=odsp-graph-online
+    """
     #: Access was denied to the resource
     AccessDenied = "accessDenied"
     #: The activity limit has been reached
@@ -93,6 +97,10 @@ class ErrorCode:
     Unauthenticated = "unauthenticated"
     #: The response was malformed
     Malformed = "malformed"
+
+
+class OneDriveResourceModifiedError(CloudTemporaryError):
+    pass
 
 
 class OneDriveInfo(DirInfo):
@@ -478,7 +486,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if code == ErrorCode.ItemNotFound:
             raise CloudFileNotFoundError(msg)
         if code == ErrorCode.ResourceModified:
-            raise CloudTemporaryError(msg)
+            raise OneDriveResourceModifiedError(msg)
         if code == ErrorCode.NameAlreadyExists:
             raise CloudFileExistsError(msg)
         if code == ErrorCode.AccessDenied:
@@ -821,12 +829,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     # onedrive occasionally reports etag mismatch errors, even when there's no possibility of conflict
                     # simply retrying here vastly reduces the number of false positive failures
                     resp = self._direct_api("put", f"{api_path}/content", data=file_like)
-
                 log.debug("uploaded: %s", resp.get("content"))
-                return self._info_from_rest(resp)
             else:
                 try:
-                    _unused_resp = self._upload_large(api_path, file_like, "replace")
+                    resp = self._upload_large(api_path, file_like, "replace")
                 except CloudFileNotFoundError:
                     # needed to ensure both OneDrive variants conform to provider spec:
                     # OneDrive personal raises a FNF error when a FEX is expected
@@ -835,8 +841,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                         raise CloudFileExistsError("Trying to upload on top of directory")
                     raise
 
-                # todo: maybe use the returned item dict to speed this up
-                return self.info_oid(oid)
+            return self._info_from_rest(resp)
 
     def create(self, path, file_like, metadata=None) -> 'OInfo':
         if not metadata:
@@ -872,18 +877,22 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             r = self._upload_large(api_path, file_like, conflict="fail")
             return self._info_from_rest(r, root=self.dirname(path))
 
-    def _upload_large(self, drive_path, file_like, conflict):  # pylint: disable=too-many-locals
+    def _create_upload_session(self, api_path: str, conflict: str) -> str:
+        """Returns the url for a new upload session"""
+        resp = self._direct_api("post", f"{api_path}/createUploadSession",
+                                json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
+        return resp["uploadUrl"]
+
+    def _upload_large(self, api_path, file_like, conflict):  # pylint: disable=too-many-locals
         size = _get_size_and_seek0(file_like)
         with self._api():
-            r = self._direct_api("post", f"{drive_path}/createUploadSession", json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
-            upload_url = r["uploadUrl"]
-
+            upload_url = self._create_upload_session(api_path, conflict)
             data = file_like.read(self.upload_block_size)
-
+            max_retries = 3
             max_retries_per_block = 10
-
             cbfrom = 0
             retries = 0
+            retries_per_block = 0
             while data:
                 clen = len(data)             # fragment content size
                 cbto = cbfrom + clen - 1     # inclusive content byte range
@@ -891,16 +900,29 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 try:
                     headers = {"Content-Length": clen, "Content-Range": cbrange}
                     r = self._direct_api("put", url=upload_url, data=data, headers=headers)
-                except (CloudDisconnectedError, CloudTemporaryError) as e:
+                except OneDriveResourceModifiedError:
+                    # this error indicates that our upload session has been invalidated - restart the upload
                     retries += 1
-                    log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s", cbrange, retries, type(e))
-                    if retries >= max_retries_per_block:
+                    log.exception("ResourceModifiedError during _upload_large, restarting upload, range=%s, retry=%s",
+                                  cbrange, retries)
+                    upload_url = self._create_upload_session(api_path, conflict)
+                    file_like.seek(0)
+                    cbto = -1  # ensures cbfrom is set to 0 below
+                except (CloudDisconnectedError, CloudTemporaryError) as e:
+                    log.warning(f"here - {e}")
+                    retries_per_block += 1
+                    log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s",
+                                  cbrange, retries_per_block, type(e))
+                    if retries_per_block >= max_retries_per_block:
                         raise e
                     continue
 
+                if retries >= max_retries:
+                    raise OneDriveResourceModifiedError("exceeded max retries in upload_large")
+
                 data = file_like.read(self.upload_block_size)
                 cbfrom = cbto + 1
-                retries = 0
+                retries_per_block = 0
             return r
 
     def download(self, oid, file_like):
