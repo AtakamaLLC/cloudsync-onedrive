@@ -909,7 +909,6 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     file_like.seek(0)
                     cbto = -1  # ensures cbfrom is set to 0 below
                 except (CloudDisconnectedError, CloudTemporaryError) as e:
-                    log.warning(f"here - {e}")
                     retries_per_block += 1
                     log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s",
                                   cbrange, retries_per_block, type(e))
