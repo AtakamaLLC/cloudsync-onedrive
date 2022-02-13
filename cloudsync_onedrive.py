@@ -888,11 +888,10 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         with self._api():
             upload_url = self._create_upload_session(api_path, conflict)
             data = file_like.read(self.upload_block_size)
-            max_retries = 3
             max_retries_per_block = 10
-            cbfrom = 0
-            retries = 0
             retries_per_block = 0
+            cbfrom = 0
+
             while data:
                 clen = len(data)             # fragment content size
                 cbto = cbfrom + clen - 1     # inclusive content byte range
@@ -900,24 +899,20 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                 try:
                     headers = {"Content-Length": clen, "Content-Range": cbrange}
                     r = self._direct_api("put", url=upload_url, data=data, headers=headers)
-                except OneDriveResourceModifiedError:
-                    # this error indicates that our upload session has been invalidated - restart the upload
-                    retries += 1
-                    log.exception("ResourceModifiedError during _upload_large, restarting upload, range=%s, retry=%s",
-                                  cbrange, retries)
-                    upload_url = self._create_upload_session(api_path, conflict)
-                    file_like.seek(0)
-                    cbto = -1  # ensures cbfrom is set to 0 below
                 except (CloudDisconnectedError, CloudTemporaryError) as e:
+                    if e is OneDriveResourceModifiedError:
+                        # this error indicates that our upload session has been invalidated --
+                        # signal sync engine to restart the upload
+                        log.exception("ResourceModifiedError in _upload_large")
+                        raise
+
                     retries_per_block += 1
                     log.exception("Exception during _upload_large, continuing, range=%s, exception%s: %s",
                                   cbrange, retries_per_block, type(e))
                     if retries_per_block >= max_retries_per_block:
                         raise e
-                    continue
 
-                if retries >= max_retries:
-                    raise OneDriveResourceModifiedError("exceeded max retries in upload_large")
+                    continue
 
                 data = file_like.read(self.upload_block_size)
                 cbfrom = cbto + 1
