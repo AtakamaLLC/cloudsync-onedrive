@@ -338,9 +338,16 @@ def test_upload_resource_modified(provider):
     # create a file to upload to
     info1 = provider.create(provider.temp_name(), BytesIO(b"test1"))
 
+    direct_api_orig = provider.prov._direct_api
+
+    def direct_api_patched(*a, **kw):
+        if a[0] == "put":
+            raise cloudsync_onedrive.OneDriveResourceModifiedError
+        return direct_api_orig(*a, **kw)
+
     # provider._direct_api() raises ResourceModified
-    with patch.object(provider.prov, "_direct_api", side_effect=cloudsync_onedrive.OneDriveResourceModifiedError):
+    with patch.object(provider.prov, "_direct_api", direct_api_patched):
         # Resource Modified errors should bubble up
         with pytest.raises(cloudsync_onedrive.OneDriveResourceModifiedError):
             # use the inner provider because the outer fixture does additional retries
-            provider.prov.upload(info1.oid, BytesIO(b"test4"))
+            provider.prov.upload(info1.oid, BytesIO(b"test2"))

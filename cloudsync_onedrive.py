@@ -900,7 +900,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     headers = {"Content-Length": clen, "Content-Range": cbrange}
                     r = self._direct_api("put", url=upload_url, data=data, headers=headers)
                 except (CloudDisconnectedError, CloudTemporaryError) as e:
-                    if e is OneDriveResourceModifiedError:
+                    if type(e) is OneDriveResourceModifiedError:
                         # this error indicates that our upload session has been invalidated --
                         # signal sync engine to restart the upload
                         log.exception("ResourceModifiedError in _upload_large")
