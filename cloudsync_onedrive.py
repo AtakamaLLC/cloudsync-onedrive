@@ -877,16 +877,12 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             r = self._upload_large(api_path, file_like, conflict="fail")
             return self._info_from_rest(r, root=self.dirname(path))
 
-    def _create_upload_session(self, api_path: str, conflict: str) -> str:
-        """Returns the url for a new upload session"""
-        resp = self._direct_api("post", f"{api_path}/createUploadSession",
-                                json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
-        return resp["uploadUrl"]
-
     def _upload_large(self, api_path, file_like, conflict):  # pylint: disable=too-many-locals
         size = _get_size_and_seek0(file_like)
         with self._api():
-            upload_url = self._create_upload_session(api_path, conflict)
+            r = self._direct_api("post", f"{api_path}/createUploadSession",
+                                 json={"item": {"@microsoft.graph.conflictBehavior": conflict}})
+            upload_url = r["uploadUrl"]
             data = file_like.read(self.upload_block_size)
             max_retries_per_block = 10
             retries_per_block = 0

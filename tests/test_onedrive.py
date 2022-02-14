@@ -23,7 +23,8 @@ from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
 from cloudsync.sync.state import FILE, DIRECTORY
-from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site, ErrorCode
+from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site, ErrorCode, \
+    OneDriveResourceModifiedError
 
 log = logging.getLogger(__name__)
 
@@ -743,6 +744,10 @@ def test_error_conversion():
 
     assert not odp._raise_converted_error(make_error(299))
     assert not odp._raise_converted_error(make_error(599))
+
+    with patch.object(odp, "_check_ns", return_value=True):
+        with pytest.raises(OneDriveResourceModifiedError):
+            odp._raise_converted_error(make_error(400, "res-mod", ErrorCode.ResourceModified))
 
 
 def test_connect_exception_handling():
