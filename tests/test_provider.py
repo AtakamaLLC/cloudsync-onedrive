@@ -332,3 +332,24 @@ def test_upload_errors(provider):
         provider.upload(folder_oid, BytesIO(b""))
     with pytest.raises(CloudFileExistsError):
         provider.upload(folder_oid, BytesIO(b"data"))
+
+
+def test_namespace_not_cleared_on_error(provider):
+    namespaces = list(provider.list_ns(recursive=True))
+    provider.disconnect()
+    provider.namespace = namespaces[-1]
+
+    direct_api_orig = provider._direct_api
+
+    def direct_api_patched(*a, **kw):
+        if "/sites/" in a[1]:
+            # error in namespace validation
+            raise CloudTemporaryError
+        return direct_api_orig(*a, **kw)
+
+    with patch.object(provider.prov, "_direct_api", direct_api_patched):
+        with pytest.raises(CloudTemporaryError):
+            provider.reconnect()
+
+    # namespace should not change
+    assert provider.namespace == namespaces[-1]
