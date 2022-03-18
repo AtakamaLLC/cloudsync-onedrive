@@ -36,7 +36,7 @@ import quickxorhash
 if TYPE_CHECKING:
     from cloudsync import OInfo  # pragma: no cover
 
-__version__ = "3.1.11"  # pragma: no cover
+__version__ = "3.2.0"  # pragma: no cover
 
 log = logging.getLogger(__name__)
 
@@ -1216,13 +1216,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
     @namespace_id.setter
     def namespace_id(self, ns_id: str):
         if self.connected:
-            # validate
-            try:
-                self._namespace = self._get_validated_namespace(ns_id)
-            except:
-                self._namespace = None
-                raise
-
+            self._namespace = self._get_validated_namespace(ns_id)
             if self.namespace.is_shared:
                 self.namespace.shared_folder_path = self.info_oid(self.namespace.shared_folder_id).path_orig
                 log.info("namespace.shared_folder_path = %s", self.namespace.shared_folder_path)
