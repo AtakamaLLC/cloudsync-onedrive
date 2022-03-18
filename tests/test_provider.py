@@ -335,6 +335,10 @@ def test_upload_errors(provider):
 
 
 def test_namespace_not_cleared_on_error(provider):
+    if provider.name == "onedrive":
+        # OneDrive Personal does not use SharePoint namespaces
+        return
+
     namespaces = list(provider.list_ns(recursive=True))
     provider.disconnect()
     provider.namespace = namespaces[-1]

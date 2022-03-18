@@ -36,7 +36,7 @@ import quickxorhash
 if TYPE_CHECKING:
     from cloudsync import OInfo  # pragma: no cover
 
-__version__ = "3.1.11"  # pragma: no cover
+__version__ = "3.2.0"  # pragma: no cover
 
 log = logging.getLogger(__name__)
 
