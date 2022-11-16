@@ -1,4 +1,5 @@
 """Imported test suite"""
+from cloudsync import CloudResourceModifiedError
 
 import cloudsync_onedrive
 from cloudsync.tests import *
@@ -332,6 +333,25 @@ def test_upload_errors(provider):
         provider.upload(folder_oid, BytesIO(b""))
     with pytest.raises(CloudFileExistsError):
         provider.upload(folder_oid, BytesIO(b"data"))
+
+
+def test_upload_resource_modified(provider):
+    # create a file to upload to
+    info1 = provider.create(provider.temp_name(), BytesIO(b"test1"))
+
+    direct_api_orig = provider.prov._direct_api
+
+    def direct_api_patched(*a, **kw):
+        if a[0] == "put":
+            raise CloudResourceModifiedError
+        return direct_api_orig(*a, **kw)
+
+    # provider._direct_api() raises ResourceModified
+    with patch.object(provider.prov, "_direct_api", direct_api_patched):
+        # Resource Modified errors should bubble up
+        with pytest.raises(CloudResourceModifiedError):
+            # use the inner provider because the outer fixture does additional retries
+            provider.prov.upload(info1.oid, BytesIO(b"test2"))
 
 
 def test_namespace_not_cleared_on_error(provider):

@@ -15,7 +15,7 @@ from cloudsync.exceptions import (
     CloudTokenError,
     CloudFileNotFoundError,
     CloudCursorError,
-    CloudFileExistsError,
+    CloudResourceModifiedError,
     CloudDisconnectedError,
     CloudTemporaryError,
 )
@@ -743,6 +743,10 @@ def test_error_conversion():
 
     assert not odp._raise_converted_error(make_error(299))
     assert not odp._raise_converted_error(make_error(599))
+
+    with patch.object(odp, "_check_ns", return_value=True):
+        with pytest.raises(CloudResourceModifiedError):
+            odp._raise_converted_error(make_error(400, "res-mod", ErrorCode.ResourceModified))
 
 
 def test_connect_exception_handling():
