@@ -352,3 +352,28 @@ def test_upload_resource_modified(provider):
         with pytest.raises(CloudResourceModifiedError):
             # use the inner provider because the outer fixture does additional retries
             provider.prov.upload(info1.oid, BytesIO(b"test2"))
+
+
+def test_namespace_not_cleared_on_error(provider):
+    if provider.name == "onedrive":
+        # OneDrive Personal does not use SharePoint namespaces
+        return
+
+    namespaces = list(provider.list_ns(recursive=True))
+    provider.disconnect()
+    provider.namespace = namespaces[-1]
+
+    direct_api_orig = provider._direct_api
+
+    def direct_api_patched(*a, **kw):
+        if "/sites/" in a[1]:
+            # error in namespace validation
+            raise CloudTemporaryError
+        return direct_api_orig(*a, **kw)
+
+    with patch.object(provider.prov, "_direct_api", direct_api_patched):
+        with pytest.raises(CloudTemporaryError):
+            provider.reconnect()
+
+    # namespace should not change
+    assert provider.namespace == namespaces[-1]
