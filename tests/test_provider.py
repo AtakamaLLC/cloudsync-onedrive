@@ -1,4 +1,5 @@
 """Imported test suite"""
+from cloudsync import CloudResourceModifiedError
 
 import cloudsync_onedrive
 from cloudsync.tests import *
@@ -342,12 +343,12 @@ def test_upload_resource_modified(provider):
 
     def direct_api_patched(*a, **kw):
         if a[0] == "put":
-            raise cloudsync_onedrive.OneDriveResourceModifiedError
+            raise CloudResourceModifiedError
         return direct_api_orig(*a, **kw)
 
     # provider._direct_api() raises ResourceModified
     with patch.object(provider.prov, "_direct_api", direct_api_patched):
         # Resource Modified errors should bubble up
-        with pytest.raises(cloudsync_onedrive.OneDriveResourceModifiedError):
+        with pytest.raises(CloudResourceModifiedError):
             # use the inner provider because the outer fixture does additional retries
             provider.prov.upload(info1.oid, BytesIO(b"test2"))

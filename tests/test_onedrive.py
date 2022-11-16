@@ -15,7 +15,7 @@ from cloudsync.exceptions import (
     CloudTokenError,
     CloudFileNotFoundError,
     CloudCursorError,
-    CloudFileExistsError,
+    CloudResourceModifiedError,
     CloudDisconnectedError,
     CloudTemporaryError,
 )
@@ -23,8 +23,7 @@ from cloudsync.tests.fixtures import FakeApi, fake_oauth_provider
 from cloudsync.oauth.apiserver import ApiError, api_route
 from cloudsync.provider import Namespace, Event
 from cloudsync.sync.state import FILE, DIRECTORY
-from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site, ErrorCode, \
-    OneDriveResourceModifiedError
+from cloudsync_onedrive import OneDriveProvider, EventFilter, NamespaceErrors, Site, ErrorCode
 
 log = logging.getLogger(__name__)
 
@@ -746,7 +745,7 @@ def test_error_conversion():
     assert not odp._raise_converted_error(make_error(599))
 
     with patch.object(odp, "_check_ns", return_value=True):
-        with pytest.raises(OneDriveResourceModifiedError):
+        with pytest.raises(CloudResourceModifiedError):
             odp._raise_converted_error(make_error(400, "res-mod", ErrorCode.ResourceModified))
 
 

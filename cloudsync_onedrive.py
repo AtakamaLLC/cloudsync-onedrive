@@ -26,8 +26,16 @@ import requests
 import arrow
 
 from cloudsync import Provider, Namespace, DIRECTORY, FILE, NOTKNOWN, Event, DirInfo
-from cloudsync.exceptions import CloudTokenError, CloudDisconnectedError, CloudFileNotFoundError, \
-    CloudFileExistsError, CloudCursorError, CloudTemporaryError, CloudNamespaceError
+from cloudsync.exceptions import (
+    CloudTokenError,
+    CloudDisconnectedError,
+    CloudFileNotFoundError,
+    CloudFileExistsError,
+    CloudCursorError,
+    CloudTemporaryError,
+    CloudNamespaceError,
+    CloudResourceModifiedError,
+)
 from cloudsync.oauth import OAuthConfig, OAuthProviderInfo
 from cloudsync.registry import register_provider
 from cloudsync.utils import debug_sig, memoize
@@ -37,7 +45,7 @@ import quickxorhash
 if TYPE_CHECKING:
     from cloudsync import OInfo  # pragma: no cover
 
-__version__ = "3.1.12"  # pragma: no cover
+__version__ = "3.2.1"  # pragma: no cover
 
 log = logging.getLogger(__name__)
 
@@ -97,10 +105,6 @@ class ErrorCode:
     Unauthenticated = "unauthenticated"
     #: The response was malformed
     Malformed = "malformed"
-
-
-class OneDriveResourceModifiedError(CloudTemporaryError):
-    pass
 
 
 class OneDriveInfo(DirInfo):
@@ -486,7 +490,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
         if code == ErrorCode.ItemNotFound:
             raise CloudFileNotFoundError(msg)
         if code == ErrorCode.ResourceModified:
-            raise OneDriveResourceModifiedError(msg)
+            raise CloudResourceModifiedError(msg)
         if code == ErrorCode.NameAlreadyExists:
             raise CloudFileExistsError(msg)
         if code == ErrorCode.AccessDenied:
@@ -896,7 +900,7 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
                     headers = {"Content-Length": clen, "Content-Range": cbrange}
                     r = self._direct_api("put", url=upload_url, data=data, headers=headers)
                 except (CloudDisconnectedError, CloudTemporaryError) as e:
-                    if type(e) is OneDriveResourceModifiedError:
+                    if isinstance(e, CloudResourceModifiedError):
                         # this error indicates that our upload session has been invalidated --
                         # signal sync engine to restart the upload
                         log.exception("ResourceModifiedError in _upload_large")
