@@ -1201,11 +1201,11 @@ class OneDriveProvider(Provider):         # pylint: disable=too-many-public-meth
             return h.hexdigest().upper()
 
     @property
-    def namespace(self) -> Optional[Drive]:
+    def namespace(self) -> Optional[Namespace]:
         return self._namespace
 
     @namespace.setter
-    def namespace(self, ns: Drive):
+    def namespace(self, ns: Namespace):
         self.namespace_id = ns.id
 
     @property
